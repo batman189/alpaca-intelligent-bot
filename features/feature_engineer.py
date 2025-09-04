@@ -19,26 +19,29 @@ class FeatureEngineer:
             
         df = df.copy()
         
+        # Basic price features
         df['returns'] = df['close'].pct_change()
         df['log_returns'] = np.log(df['close'] / df['close'].shift(1))
         df['volatility'] = df['returns'].rolling(20).std()
         df['momentum'] = df['close'] / df['close'].shift(5) - 1
         
-        df.ta.rsi(length=14, append=True)
-        df.ta.macd(fast=12, slow=26, signal=9, append=True)
-        df.ta.bbands(length=20, std=2, append=True)
-        df.ta.atr(length=14, append=True)
-        df.ta.obv(append=True)
-        df.ta.vwap(append=True)
-        df.ta.stoch(append=True)
-        df.ta.adx(length=14, append=True)
-        df.ta.cci(length=20, append=True)
-        df.ta.willr(length=14, append=True)
+        # Try to calculate technical indicators
+        try:
+            df.ta.rsi(length=14, append=True)
+            df.ta.macd(fast=12, slow=26, signal=9, append=True)
+            df.ta.bbands(length=20, std=2, append=True)
+            df.ta.atr(length=14, append=True)
+            df.ta.obv(append=True)
+            
+            # Additional features if indicators were calculated
+            if 'BBU_20_2.0' in df.columns and 'BBL_20_2.0' in df.columns and 'BBM_20_2.0' in df.columns:
+                df['bb_width'] = (df['BBU_20_2.0'] - df['BBL_20_2.0']) / df['BBM_20_2.0']
+                df['bb_position'] = (df['close'] - df['BBL_20_2.0']) / (df['BBU_20_2.0'] - df['BBL_20_2.0'])
+                
+        except Exception as e:
+            logger.warning(f"Technical indicators failed: {e}. Using basic features only.")
         
-        df['price_vs_vwap'] = df['close'] / df['VWAP_D'] - 1
-        df['bb_width'] = (df['BBU_20_2.0'] - df['BBL_20_2.0']) / df['BBM_20_2.0']
-        df['bb_position'] = (df['close'] - df['BBL_20_2.0']) / (df['BBU_20_2.0'] - df['BBL_20_2.0'])
-        
+        # Volume features
         df['volume_ma_ratio'] = df['volume'] / df['volume'].rolling(20).mean()
         df['volume_spike'] = (df['volume'] > df['volume'].rolling(20).mean() * 2).astype(int)
         
@@ -50,12 +53,10 @@ class FeatureEngineer:
             
         df = primary_data.copy()
         
+        # Market relative performance
         df['spy_returns'] = spy_data['close'].pct_change()
         df['alpha'] = df['returns'] - df['spy_returns']
         df['relative_strength'] = df['close'] / spy_data['close'] * 100
-        
-        returns_correlation = df['returns'].rolling(20).corr(df['spy_returns'])
-        df['market_correlation'] = returns_correlation
         
         return df
         
@@ -65,15 +66,19 @@ class FeatureEngineer:
             
         latest_data = df.iloc[[-1]].copy()
         
-        feature_columns = [
-            'close', 'volume', 'returns', 'volatility', 'momentum',
-            'RSI_14', 'MACD_12_26_9', 'MACDs_12_26_9', 'MACDh_12_26_9',
-            'BBU_20_2.0', 'BBL_20_2.0', 'BBM_20_2.0', 'BBP_20_2.0',
-            'ATRr_14', 'OBV', 'VWAP_D', 'STOCHk_14_3_3', 'STOCHd_14_3_3',
-            'ADX_14', 'CCI_20_0.015', 'WILLR_14', 'price_vs_vwap',
-            'bb_width', 'bb_position', 'volume_ma_ratio', 'volume_spike',
-            'alpha', 'relative_strength', 'market_correlation'
-        ]
+        # Basic features that should always be available
+        base_features = ['close', 'volume', 'returns', 'volatility', 'momentum', 
+                        'volume_ma_ratio', 'volume_spike']
         
-        available_features = [col for col in feature_columns if col in latest_data.columns]
+        # Technical indicators that might be available
+        technical_features = ['RSI_14', 'MACD_12_26_9', 'MACDs_12_26_9', 'MACDh_12_26_9',
+                             'BBU_20_2.0', 'BBL_20_2.0', 'BBM_20_2.0', 'ATRr_14', 'OBV',
+                             'bb_width', 'bb_position']
+        
+        # Only include features that actually exist
+        available_features = []
+        for feature in base_features + technical_features:
+            if feature in latest_data.columns:
+                available_features.append(feature)
+                
         return latest_data[available_features]
