@@ -4,6 +4,7 @@ from alpaca_trade_api import REST
 import logging
 from datetime import datetime, timedelta
 import os
+import time  # ← ADD THIS IMPORT
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ class DataClient:
         data = {}
         for symbol in symbols:
             data[symbol] = self.get_historical_bars(symbol, timeframe, limit)
-            time.sleep(0.1)  # Rate limiting
+            time.sleep(0.1)  # ← THIS LINE USES time.sleep()
         return data
         
     def get_latest_quote(self, symbol):
