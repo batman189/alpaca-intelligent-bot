@@ -2,7 +2,7 @@ import pandas as pd
 import logging
 import os
 import time
-from data.data_client import DataClient
+from data.historical.sample_data import get_historical_data
 from features.feature_engineer import FeatureEngineer
 from models.predictor import IntelligentPredictor
 
@@ -23,37 +23,18 @@ def train_model():
     
     try:
         # Initialize components
-        data_client = DataClient()
         feature_engineer = FeatureEngineer()
         predictor = IntelligentPredictor()
         
-        # Get historical data for training - try multiple symbols if needed
-        symbols_to_try = ['SPY', 'AAPL', 'MSFT', 'QQQ', 'NVDA']
-        data = None
-        
-        for symbol in symbols_to_try:
-            logger.info(f"Fetching historical data for {symbol}...")
-            data = data_client.get_historical_bars(symbol, '1D', limit=500)  # Use daily data for more history
-            
-            if data is not None and len(data) >= 100:
-                logger.info(f"Successfully retrieved {len(data)} daily bars for {symbol}")
-                selected_symbol = symbol
-                break
-            else:
-                data_length = len(data) if data is not None else 0
-                logger.warning(f"Only got {data_length} bars for {symbol}, trying next...")
-                time.sleep(1)  # Be nice to the API
+        # Get historical data from our sample data
+        logger.info("Loading historical data for training...")
+        data = get_historical_data('SPY')
         
         if data is None:
-            logger.error("Failed to fetch data for any symbol")
+            logger.error("Failed to load historical data")
             return False
             
-        if len(data) < 50:
-            logger.error(f"Not enough data for training. Got {len(data)} bars, need at least 50.")
-            logger.info("Using fallback: generating synthetic training data for demonstration...")
-            return create_demo_model(predictor)
-            
-        logger.info(f"Using {len(data)} bars of {selected_symbol} data for training")
+        logger.info(f"Successfully loaded {len(data)} historical bars for training")
         
         # Engineer features
         logger.info("Engineering features...")
@@ -74,7 +55,7 @@ def train_model():
         logger.info(f"Clean dataset: {len(features)} samples with {len(features.columns)} features")
         
         if len(features) < 20:
-            logger.warning("Very limited data available. Creating demo model...")
+            logger.warning("Limited data available. Creating demo model...")
             return create_demo_model(predictor)
         
         # Train the model
@@ -103,7 +84,7 @@ def train_model():
         return create_demo_model(predictor)
 
 def create_demo_model(predictor):
-    """Create a simple demo model for testing when real data is limited"""
+    """Create a simple demo model for testing"""
     try:
         logger.info("Creating demonstration model with sample data...")
         
@@ -150,7 +131,7 @@ if __name__ == "__main__":
     success = train_model()
     if success:
         print("✅ Model training completed successfully!")
-        print("The bot can now make predictions (using real or demo model)")
+        print("The bot can now make predictions")
     else:
         print("❌ Model training failed completely")
         exit(1)
