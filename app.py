@@ -245,21 +245,24 @@ class IntelligentTradingBot:
         except Exception as e:
             logger.error(f"Error managing positions: {e}")
             
-    def run(self):
+        def run(self):
         """Main bot loop"""
         logger.info("Starting Intelligent Trading Bot")
         
         while True:
             try:
                 self.run_analysis_cycle()
-                time.sleep(60)  # Shorter sleep for testing
+                
+                # Sleep until next cycle (e.g., every 15 minutes)
+                logger.info("Sleeping for 15 minutes until next analysis cycle...")
+                time.sleep(900)  # ← THIS LINE MUST USE time.sleep()
                 
             except KeyboardInterrupt:
                 logger.info("Bot stopped by user")
                 break
             except Exception as e:
                 logger.error(f"Unexpected error in main loop: {e}")
-                time.sleep(30)
+                time.sleep(60)  # ← AND THIS LINE TOO
 
 if __name__ == "__main__":
     bot = IntelligentTradingBot()
