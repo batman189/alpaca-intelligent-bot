@@ -4,6 +4,7 @@ import logging
 import time
 import pandas as pd
 from datetime import datetime
+import os
 
 # Configure logging
 logging.basicConfig(
@@ -39,6 +40,27 @@ from models.predictor import IntelligentPredictor
 from trading.portfolio_manager import PortfolioManager
 from trading.execution_client import ExecutionClient
 
+def train_model_if_needed():
+    """Train model if it doesn't exist"""
+    model_path = 'models/trained_model.pkl'
+    
+    if not os.path.exists(model_path):
+        logger.info("No trained model found. Starting model training...")
+        try:
+            # Import and run training
+            from train_model import train_model
+            success = train_model()
+            if success:
+                logger.info("Model training completed successfully!")
+                return True
+            else:
+                logger.warning("Model training failed")
+                return False
+        except Exception as e:
+            logger.error(f"Error during model training: {e}")
+            return False
+    return True
+
 class IntelligentTradingBot:
     def __init__(self):
         # Start Flask server in a separate thread
@@ -46,17 +68,23 @@ class IntelligentTradingBot:
         self.flask_thread = threading.Thread(target=run_flask_app, daemon=True)
         self.flask_thread.start()
         
+        # Train model if needed
+        self.model_trained = train_model_if_needed()
+        
         self.data_client = DataClient()
         self.feature_engineer = FeatureEngineer()
         self.predictor = IntelligentPredictor()
         self.portfolio_manager = PortfolioManager()
         self.execution_client = ExecutionClient()
         
-        # Load pre-trained model
-        logger.info("Loading trained model...")
-        success = self.predictor.load_model('models/trained_model.pkl')
-        if not success:
-            logger.warning("No trained model found. Bot will run in analysis-only mode.")
+        # Load pre-trained model if available
+        if self.model_trained:
+            logger.info("Loading trained model...")
+            success = self.predictor.load_model('models/trained_model.pkl')
+            if not success:
+                logger.warning("Failed to load trained model")
+        else:
+            logger.warning("No model available. Running in analysis-only mode.")
         
     def run_analysis_cycle(self):
         """Run one complete analysis and trading cycle"""
