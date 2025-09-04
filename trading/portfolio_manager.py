@@ -1,9 +1,15 @@
 import numpy as np
 import logging
+import time  # ADD THIS IMPORT
 from typing import Dict, List
-from config.settings import settings
+import os
 
 logger = logging.getLogger(__name__)
+
+# Direct environment variable access
+RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.02'))
+MAX_PORTFOLIO_RISK = float(os.getenv('MAX_PORTFOLIO_RISK', '0.1'))
+MIN_CONFIDENCE = float(os.getenv('MIN_CONFIDENCE', '0.6'))
 
 class PortfolioManager:
     def __init__(self):
@@ -19,10 +25,10 @@ class PortfolioManager:
         if risk_per_share <= 0:
             return 0
             
-        max_risk_amount = account_equity * settings.RISK_PER_TRADE * confidence
+        max_risk_amount = account_equity * RISK_PER_TRADE * confidence
         shares = max_risk_amount / risk_per_share
         
-        max_shares = (account_equity * settings.MAX_PORTFOLIO_RISK) / entry_price
+        max_shares = (account_equity * MAX_PORTFOLIO_RISK) / entry_price
         shares = min(shares, max_shares)
         
         return int(max(1, shares))
@@ -42,7 +48,7 @@ class PortfolioManager:
         
     def should_enter_trade(self, symbol: str, confidence: float, 
                          current_positions: Dict) -> bool:
-        if confidence < settings.MIN_CONFIDENCE:
+        if confidence < MIN_CONFIDENCE:
             return False
             
         if symbol in current_positions:
@@ -60,7 +66,7 @@ class PortfolioManager:
         
         for symbol, position in current_positions.items():
             current_price = market_data.get(symbol, {}).get('close', 0)
-            if current_price <= position['stop_loss']:
+            if current_price <= position.get('stop_loss', 0):
                 exit_signals.append({
                     'symbol': symbol,
                     'reason': 'stop_loss',
