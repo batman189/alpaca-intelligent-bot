@@ -3,7 +3,7 @@ import numpy as np
 from alpaca_trade_api import REST
 import logging
 from datetime import datetime, timedelta
-from config import settings
+from config.settings import settings  # ← FIXED IMPORT
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,19 @@ class DataClient:
         """Generate sample data for demonstration when live data fails"""
         try:
             # Create realistic sample data based on symbol
-            base_price = 450 if symbol == 'SPY' else 180 if symbol == 'AAPL' else 100
+            if symbol == 'SPY':
+                base_price = 450
+            elif symbol == 'AAPL':
+                base_price = 180
+            elif symbol == 'NVDA':
+                base_price = 125
+            elif symbol == 'TSLA':
+                base_price = 250
+            elif symbol == 'GOOGL':
+                base_price = 140
+            else:
+                base_price = 100
+                
             volatility = 0.015
             
             dates = pd.date_range(end=datetime.now(), periods=limit, freq=timeframe)
@@ -67,4 +79,73 @@ class DataClient:
             time.sleep(0.1)  # Rate limiting
         return data
         
-    # ... keep the rest of your existing methods (get_latest_quote, get_option_chain, etc.)
+    def get_latest_quote(self, symbol):
+        """Get the latest quote for a symbol with fallback"""
+        try:
+            quote = self.api.get_latest_quote(symbol)
+            return {
+                'ask_price': float(quote.askprice),
+                'bid_price': float(quote.bidprice),
+                'ask_size': int(quote.asksize),
+                'bid_size': int(quote.bidsize)
+            }
+        except Exception as e:
+            logger.error(f"Error getting quote for {symbol}: {e}")
+            # Return sample quote data
+            return {
+                'ask_price': 100.0,
+                'bid_price': 99.9,
+                'ask_size': 100,
+                'bid_size': 150
+            }
+            
+    def get_option_chain(self, symbol, expiration_date=None):
+        """Get option chain for a symbol (simplified)"""
+        try:
+            # For real trading, you'd need to implement proper options data
+            # This is a simplified version for demonstration
+            current_price = 100.0  # Default price
+            
+            # Try to get real price first
+            try:
+                latest_trade = self.api.get_latest_trade(symbol)
+                current_price = float(latest_trade.price)
+            except:
+                pass
+                
+            strikes = [round(current_price * (1 + i * 0.05)) for i in range(-3, 4)]
+            
+            option_chain = []
+            for strike in strikes:
+                option_chain.append({
+                    'symbol': f"{symbol}{expiration_date or '250117'}C{strike:08d}",
+                    'strike': strike,
+                    'type': 'call',
+                    'expiration': expiration_date or '2025-01-17'
+                })
+                
+            return option_chain
+            
+        except Exception as e:
+            logger.error(f"Error getting option chain for {symbol}: {e}")
+            return None
+            
+    def get_account_info(self):
+        """Get current account information with fallback"""
+        try:
+            account = self.api.get_account()
+            return {
+                'equity': float(account.equity),
+                'cash': float(account.cash),
+                'buying_power': float(account.buying_power),
+                'portfolio_value': float(account.portfolio_value)
+            }
+        except Exception as e:
+            logger.error(f"Error getting account info: {e}")
+            # Return sample account data for demonstration
+            return {
+                'equity': 10000.0,
+                'cash': 5000.0,
+                'buying_power': 10000.0,
+                'portfolio_value': 10000.0
+            }
