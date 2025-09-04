@@ -176,7 +176,7 @@ class IntelligentTradingBot:
         except Exception as e:
             logger.error(f"Error in analysis cycle: {e}")
             
-    def analyze_symbol(self, symbol: str, data, account_info: dict):
+    def analyze_symbol(self, symbol, data, account_info):
         """Analyze a single symbol and make trading decisions"""
         if data is None:
             logger.warning(f"No data for {symbol}")
@@ -207,7 +207,7 @@ class IntelligentTradingBot:
         except Exception as e:
             logger.error(f"Error analyzing {symbol}: {e}")
             
-    def execute_trade(self, symbol: str, data, account_info: dict, confidence: float):
+    def execute_trade(self, symbol, data, account_info, confidence):
         """Execute a trade based on analysis"""
         if not ENABLE_TRADING:
             logger.info(f"Trading disabled. Would trade {symbol} with confidence {confidence:.2f}")
@@ -232,7 +232,7 @@ class IntelligentTradingBot:
         except Exception as e:
             logger.error(f"Error executing trade for {symbol}: {e}")
             
-    def manage_existing_positions(self, market_data: dict):
+    def manage_existing_positions(self, market_data):
         """Manage risk on existing positions"""
         try:
             current_positions = execution_client.get_current_positions()
@@ -245,24 +245,21 @@ class IntelligentTradingBot:
         except Exception as e:
             logger.error(f"Error managing positions: {e}")
             
-        def run(self):
+    def run(self):
         """Main bot loop"""
         logger.info("Starting Intelligent Trading Bot")
         
         while True:
             try:
                 self.run_analysis_cycle()
-                
-                # Sleep until next cycle (e.g., every 15 minutes)
-                logger.info("Sleeping for 15 minutes until next analysis cycle...")
-                time.sleep(900)  # ← THIS LINE MUST USE time.sleep()
+                time.sleep(60)  # Shorter sleep for testing
                 
             except KeyboardInterrupt:
                 logger.info("Bot stopped by user")
                 break
             except Exception as e:
                 logger.error(f"Unexpected error in main loop: {e}")
-                time.sleep(60)  # ← AND THIS LINE TOO
+                time.sleep(30)
 
 if __name__ == "__main__":
     bot = IntelligentTradingBot()
