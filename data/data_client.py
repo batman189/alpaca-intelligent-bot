@@ -3,19 +3,31 @@ import numpy as np
 from alpaca_trade_api import REST
 import logging
 from datetime import datetime, timedelta
-from config.settings import settings  # ← FIXED IMPORT
+import os
 
 logger = logging.getLogger(__name__)
 
+# Direct environment variable access - NO SETTINGS IMPORT
+APCA_API_KEY_ID = os.getenv('APCA_API_KEY_ID', '')
+APCA_API_SECRET_KEY = os.getenv('APCA_API_SECRET_KEY', '')
+APCA_API_BASE_URL = os.getenv('APCA_API_BASE_URL', 'https://paper-api.alpaca.markets')
+
 class DataClient:
     def __init__(self):
-        self.api = REST(settings.APCA_API_KEY_ID, 
-                       settings.APCA_API_SECRET_KEY, 
-                       settings.APCA_API_BASE_URL)
+        try:
+            self.api = REST(APCA_API_KEY_ID, APCA_API_SECRET_KEY, APCA_API_BASE_URL)
+            logger.info("Alpaca API client initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Alpaca API: {e}")
+            self.api = None
         
     def get_historical_bars(self, symbol, timeframe='15Min', limit=100):
         """Get historical data with fallback to generated data"""
         try:
+            if self.api is None:
+                logger.warning(f"API not available. Generating sample data for {symbol}")
+                return self.generate_sample_data(symbol, timeframe, limit)
+                
             logger.info(f"Fetching live data for {symbol}...")
             bars = self.api.get_bars(symbol, timeframe, limit=limit).df
             
@@ -46,12 +58,33 @@ class DataClient:
                 base_price = 250
             elif symbol == 'GOOGL':
                 base_price = 140
+            elif symbol == 'MSFT':
+                base_price = 300
+            elif symbol == 'QQQ':
+                base_price = 380
+            elif symbol == 'IWM':
+                base_price = 190
             else:
                 base_price = 100
                 
             volatility = 0.015
             
-            dates = pd.date_range(end=datetime.now(), periods=limit, freq=timeframe)
+            # Create date range based on timeframe
+            end_date = datetime.now()
+            if timeframe == '15Min':
+                start_date = end_date - timedelta(days=7)
+                freq = '15min'
+            elif timeframe == '1D':
+                start_date = end_date - timedelta(days=limit)
+                freq = 'D'
+            else:
+                start_date = end_date - timedelta(days=30)
+                freq = 'H'
+            
+            dates = pd.date_range(start=start_date, end=end_date, freq=freq)
+            if len(dates) > limit:
+                dates = dates[-limit:]
+            
             returns = np.random.normal(0.0002, volatility, len(dates))
             
             prices = base_price * np.exp(np.cumsum(returns))
@@ -82,6 +115,10 @@ class DataClient:
     def get_latest_quote(self, symbol):
         """Get the latest quote for a symbol with fallback"""
         try:
+            if self.api is None:
+                logger.warning(f"API not available. Returning sample quote for {symbol}")
+                return self.generate_sample_quote(symbol)
+                
             quote = self.api.get_latest_quote(symbol)
             return {
                 'ask_price': float(quote.askprice),
@@ -91,27 +128,40 @@ class DataClient:
             }
         except Exception as e:
             logger.error(f"Error getting quote for {symbol}: {e}")
-            # Return sample quote data
-            return {
-                'ask_price': 100.0,
-                'bid_price': 99.9,
-                'ask_size': 100,
-                'bid_size': 150
-            }
+            return self.generate_sample_quote(symbol)
+            
+    def generate_sample_quote(self, symbol):
+        """Generate sample quote data"""
+        base_price = 100
+        if symbol == 'SPY': base_price = 450
+        elif symbol == 'AAPL': base_price = 180
+        elif symbol == 'NVDA': base_price = 125
+        
+        return {
+            'ask_price': base_price * 1.001,
+            'bid_price': base_price * 0.999,
+            'ask_size': 100,
+            'bid_size': 150
+        }
             
     def get_option_chain(self, symbol, expiration_date=None):
         """Get option chain for a symbol (simplified)"""
         try:
-            # For real trading, you'd need to implement proper options data
-            # This is a simplified version for demonstration
             current_price = 100.0  # Default price
             
             # Try to get real price first
             try:
-                latest_trade = self.api.get_latest_trade(symbol)
-                current_price = float(latest_trade.price)
+                if self.api:
+                    latest_trade = self.api.get_latest_trade(symbol)
+                    current_price = float(latest_trade.price)
             except:
                 pass
+                
+            # Adjust base price based on symbol
+            if symbol == 'SPY': current_price = 450
+            elif symbol == 'AAPL': current_price = 180
+            elif symbol == 'NVDA': current_price = 125
+            elif symbol == 'TSLA': current_price = 250
                 
             strikes = [round(current_price * (1 + i * 0.05)) for i in range(-3, 4)]
             
@@ -133,6 +183,10 @@ class DataClient:
     def get_account_info(self):
         """Get current account information with fallback"""
         try:
+            if self.api is None:
+                logger.warning("API not available. Returning sample account info")
+                return self.generate_sample_account_info()
+                
             account = self.api.get_account()
             return {
                 'equity': float(account.equity),
@@ -142,10 +196,29 @@ class DataClient:
             }
         except Exception as e:
             logger.error(f"Error getting account info: {e}")
-            # Return sample account data for demonstration
-            return {
-                'equity': 10000.0,
-                'cash': 5000.0,
-                'buying_power': 10000.0,
-                'portfolio_value': 10000.0
-            }
+            return self.generate_sample_account_info()
+            
+    def generate_sample_account_info(self):
+        """Generate sample account data for demonstration"""
+        return {
+            'equity': 10000.0,
+            'cash': 5000.0,
+            'buying_power': 10000.0,
+            'portfolio_value': 10000.0
+        }
+        
+    def get_positions(self):
+        """Get current positions with fallback"""
+        try:
+            if self.api is None:
+                return {}
+                
+            positions = self.api.list_positions()
+            return {pos.symbol: {
+                'qty': float(pos.qty),
+                'market_value': float(pos.market_value),
+                'current_price': float(pos.current_price)
+            } for pos in positions}
+        except Exception as e:
+            logger.error(f"Error getting positions: {e}")
+            return {}
