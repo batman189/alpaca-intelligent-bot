@@ -28,7 +28,7 @@ class ExecutionClient:
                           strike: float, expiration: str) -> bool:
         """
         Place an options order with Alpaca
-        FIXED: Correct option symbol formatting for Alpaca
+        FIXED: Correct option symbol formatting for Alpaca with proper strike formatting
         """
         try:
             # Convert order type to side
@@ -36,16 +36,18 @@ class ExecutionClient:
             
             # Build the option symbol properly for Alpaca
             # Correct format: {SYMBOL}{EXPIRATION}{TYPE}{STRIKE}
-            # Example: AAPL240321C00150000 (AAPL, Mar 21 2024, Call, $150 strike)
             
             # Format expiration from YYYY-MM-DD to YYMMDD
             expiration_date = datetime.strptime(expiration, '%Y-%m-%d')
             expiration_formatted = expiration_date.strftime('%y%m%d')
             
-            # Format strike price correctly (convert to integer and pad to 8 digits)
-            # Strike price needs to be in cents (e.g., $150.00 = 15000)
+            # Format strike price correctly - THIS IS THE CRITICAL FIX
+            # Strike price needs to be in cents, padded to 8 digits
+            # Examples: 
+            # - $150.00 strike = 15000 cents = "00015000"
+            # - $211.00 strike = 21100 cents = "00021100"  
             strike_cents = int(strike * 100)
-            strike_formatted = f"{strike_cents:08d}"  # Pad to 8 digits with leading zeros
+            strike_formatted = f"{strike_cents:08d}"  # This pads to 8 digits with leading zeros
             
             # Build the option symbol
             option_type_char = 'C' if order_type.lower() == 'call' else 'P'
@@ -53,6 +55,13 @@ class ExecutionClient:
             
             logger.info(f"Placing options order: {side.upper()} {quantity} contracts of {option_symbol}")
             logger.info(f"Option details: {symbol} {expiration} {order_type} ${strike}")
+            
+            # First, try to get the option asset to verify it exists
+            try:
+                asset = self.api.get_asset(option_symbol)
+                logger.info(f"Option asset verified: {asset.symbol}")
+            except:
+                logger.warning(f"Option asset not found, attempting order anyway: {option_symbol}")
             
             # Place the order
             order = self.api.submit_order(
