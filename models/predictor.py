@@ -2,7 +2,6 @@ import logging
 import pickle
 import numpy as np
 import random
-from sklearn.ensemble import GradientBoostingClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +20,8 @@ class IntelligentPredictor:
             return True
         except Exception as e:
             logger.error(f"Error loading model: {e}")
-            self.model = GradientBoostingClassifier()
+            # Don't create a new model, just use random predictions
+            self.is_trained = False
             return False
             
     def predict(self, features):
@@ -30,7 +30,7 @@ class IntelligentPredictor:
         features: numpy array of shape (1, n_features)
         """
         try:
-            if not self.is_trained:
+            if not self.is_trained or self.model is None:
                 # Return random prediction if no model is loaded
                 return self._random_prediction()
                 
