@@ -1,6 +1,7 @@
 import numpy as np
 import logging
 from typing import Dict, List
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -13,14 +14,14 @@ class OptionsStrategyEngine:
             'iron_condor': self.iron_condor_strategy
         }
     
-    def select_best_option(self, symbol, prediction, confidence, option_chain):
+    def select_best_option(self, symbol, prediction, confidence, option_chain, current_price):
         """Select the best option contract based on strategy"""
         if prediction == 1:  # Bullish
-            return self.select_call_option(symbol, confidence, option_chain)
+            return self.select_call_option(symbol, confidence, option_chain, current_price)
         else:  # Bearish
-            return self.select_put_option(symbol, confidence, option_chain)
+            return self.select_put_option(symbol, confidence, option_chain, current_price)
     
-    def select_call_option(self, symbol, confidence, option_chain):
+    def select_call_option(self, symbol, confidence, option_chain, current_price):
         """Select optimal call option"""
         if not option_chain:
             return None
@@ -28,17 +29,24 @@ class OptionsStrategyEngine:
         # Filter for calls only
         calls = [opt for opt in option_chain if opt['type'] == 'call']
         
+        if not calls:
+            return None
+            
+        # Add mock price for demonstration (0.5-5% of underlying)
+        for call in calls:
+            call['price'] = current_price * 0.01 * (1 + abs(call['strike'] - current_price) / current_price)
+        
         # Strategy: Higher confidence -> closer to ATM, lower confidence -> OTM
         if confidence > 0.7:
             # ATM calls for high confidence
-            selected = min(calls, key=lambda x: abs(x['strike'] - self.get_current_price(symbol)))
+            selected = min(calls, key=lambda x: abs(x['strike'] - current_price))
         else:
             # OTM calls for lower confidence (higher leverage)
             selected = min(calls, key=lambda x: x['strike'])
             
         return selected
     
-    def select_put_option(self, symbol, confidence, option_chain):
+    def select_put_option(self, symbol, confidence, option_chain, current_price):
         """Select optimal put option"""
         if not option_chain:
             return None
@@ -46,9 +54,16 @@ class OptionsStrategyEngine:
         # Filter for puts only
         puts = [opt for opt in option_chain if opt['type'] == 'put']
         
+        if not puts:
+            return None
+            
+        # Add mock price for demonstration
+        for put in puts:
+            put['price'] = current_price * 0.01 * (1 + abs(put['strike'] - current_price) / current_price)
+        
         if confidence > 0.7:
             # ATM puts for high confidence
-            selected = min(puts, key=lambda x: abs(x['strike'] - self.get_current_price(symbol)))
+            selected = min(puts, key=lambda x: abs(x['strike'] - current_price))
         else:
             # OTM puts for lower confidence
             selected = max(puts, key=lambda x: x['strike'])
@@ -60,3 +75,21 @@ class OptionsStrategyEngine:
         risk_amount = account_equity * 0.02 * confidence  # 2% risk adjusted by confidence
         contracts = risk_amount / (option_price * 100)  # Option price is per share
         return max(1, int(contracts))
+    
+    def long_call_strategy(self, symbol, confidence, option_chain, current_price):
+        """Long call strategy implementation"""
+        return self.select_call_option(symbol, confidence, option_chain, current_price)
+    
+    def long_put_strategy(self, symbol, confidence, option_chain, current_price):
+        """Long put strategy implementation"""
+        return self.select_put_option(symbol, confidence, option_chain, current_price)
+    
+    def credit_spread_strategy(self, symbol, confidence, option_chain, current_price):
+        """Credit spread strategy (placeholder)"""
+        # Implement credit spread logic here
+        return None
+    
+    def iron_condor_strategy(self, symbol, confidence, option_chain, current_price):
+        """Iron condor strategy (placeholder)"""
+        # Implement iron condor logic here
+        return None
