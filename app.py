@@ -458,7 +458,16 @@ def run_test_mode():
     
     logger.info("🎉 SYSTEM TEST COMPLETE - Ready for market open!")
     return True
-
+# === ADD THIS SECTION FOR REMOTE TESTING ===
+@app.route('/test')
+def run_remote_test():
+    """Remote test endpoint for Render hosting"""
+    try:
+        success = run_test_mode()
+        return {'status': 'success' if success else 'failed', 'message': 'Check Render logs for details.'}
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}, 500
+# === END ADDITION ===
 if __name__ == "__main__":
     if TEST_MODE:
         logger.info("🛠️ Running in TEST MODE")
