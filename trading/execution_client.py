@@ -28,27 +28,31 @@ class ExecutionClient:
                           strike: float, expiration: str) -> bool:
         """
         Place an options order with Alpaca
-        FIXED: Use the underlying symbol (e.g., 'SPY') not the option symbol
+        FIXED: Correct option symbol formatting for Alpaca
         """
         try:
             # Convert order type to side
             side = 'buy' if order_type.lower() == 'call' else 'sell'
             
             # Build the option symbol properly for Alpaca
-            # Format: {SYMBOL}{EXPIRATION}{TYPE}{STRIKE}
-            # Example: SPY240321C00500000 (SPY, Mar 21 2024, Call, $500 strike)
+            # Correct format: {SYMBOL}{EXPIRATION}{TYPE}{STRIKE}
+            # Example: AAPL240321C00150000 (AAPL, Mar 21 2024, Call, $150 strike)
             
             # Format expiration from YYYY-MM-DD to YYMMDD
             expiration_date = datetime.strptime(expiration, '%Y-%m-%d')
             expiration_formatted = expiration_date.strftime('%y%m%d')
             
-            # Format strike price (convert to integer and pad to 8 digits)
-            strike_formatted = f"{int(strike * 1000):08d}"
+            # Format strike price correctly (convert to integer and pad to 8 digits)
+            # Strike price needs to be in cents (e.g., $150.00 = 15000)
+            strike_cents = int(strike * 100)
+            strike_formatted = f"{strike_cents:08d}"  # Pad to 8 digits with leading zeros
             
             # Build the option symbol
-            option_symbol = f"{symbol}{expiration_formatted}{order_type[0].upper()}{strike_formatted}"
+            option_type_char = 'C' if order_type.lower() == 'call' else 'P'
+            option_symbol = f"{symbol}{expiration_formatted}{option_type_char}{strike_formatted}"
             
             logger.info(f"Placing options order: {side.upper()} {quantity} contracts of {option_symbol}")
+            logger.info(f"Option details: {symbol} {expiration} {order_type} ${strike}")
             
             # Place the order
             order = self.api.submit_order(
