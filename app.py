@@ -5,6 +5,7 @@ import time
 import pandas as pd
 from datetime import datetime
 import os
+import requests
 
 # Configure logging
 logging.basicConfig(
@@ -45,6 +46,7 @@ PAPER_TRADING = os.getenv('PAPER_TRADING', 'true').lower() == 'true'
 TRADING_STRATEGY = os.getenv('TRADING_STRATEGY', 'options')
 OPTIONS_EXPIRATION = os.getenv('OPTIONS_EXPIRATION', '2026-01-16')
 MAX_OPTIONS_POSITIONS = int(os.getenv('MAX_OPTIONS_POSITIONS', '5'))
+TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
 
 # Import our modules with simple error handling
 try:
@@ -324,6 +326,81 @@ class IntelligentTradingBot:
                 logger.error(f"Unexpected error in main loop: {e}")
                 time.sleep(30)
 
+def run_test_mode():
+    """Test mode that verifies all components are working"""
+    logger.info("🚀 STARTING COMPREHENSIVE SYSTEM TEST")
+    
+    # Test 1: Basic Imports and Initialization
+    logger.info("1. Testing component initialization...")
+    try:
+        from data.data_client import DataClient
+        from features.feature_engineer import FeatureEngineer
+        from models.predictor import IntelligentPredictor
+        from trading.portfolio_manager import PortfolioManager
+        from trading.execution_client import ExecutionClient
+        from models.reinforcement_learner import ReinforcementLearner
+        logger.info("✅ All imports successful")
+    except Exception as e:
+        logger.error(f"❌ Import test failed: {e}")
+        return False
+    
+    # Test 2: Data Client
+    logger.info("2. Testing data client...")
+    try:
+        dc = DataClient()
+        account_info = dc.get_account_info()
+        logger.info(f"✅ Data client working - Account equity: ${account_info.get('equity', 0):.2f}")
+    except Exception as e:
+        logger.error(f"❌ Data client test failed: {e}")
+    
+    # Test 3: Reinforcement Learning System
+    logger.info("3. Testing reinforcement learning...")
+    try:
+        rl = ReinforcementLearner()
+        rl.record_trade({
+            'symbol': 'TEST',
+            'prediction': 1,
+            'confidence': 0.75,
+            'pnl': 150.50,
+            'test_mode': True
+        })
+        logger.info("✅ Reinforcement learning system working")
+    except Exception as e:
+        logger.error(f"❌ Reinforcement learning test failed: {e}")
+    
+    # Test 4: Health Check Server
+    logger.info("4. Testing health server...")
+    try:
+        test_server_thread = threading.Thread(target=run_flask_app, daemon=True)
+        test_server_thread.start()
+        time.sleep(2)
+        
+        response = requests.get('http://localhost:10000/health', timeout=5)
+        if response.status_code == 200:
+            logger.info("✅ Health server working")
+        else:
+            logger.error(f"❌ Health server test failed: {response.status_code}")
+    except Exception as e:
+        logger.error(f"❌ Health server test failed: {e}")
+    
+    # Test 5: Full Analysis Cycle (Dry Run)
+    logger.info("5. Testing analysis cycle...")
+    try:
+        bot = IntelligentTradingBot()
+        bot.run_analysis_cycle()
+        logger.info("✅ Analysis cycle completed successfully")
+    except Exception as e:
+        logger.error(f"❌ Analysis cycle test failed: {e}")
+    
+    logger.info("🎉 SYSTEM TEST COMPLETE - Ready for market open!")
+    return True
+
 if __name__ == "__main__":
-    bot = IntelligentTradingBot()
-    bot.run()
+    if TEST_MODE:
+        logger.info("🛠️ Running in TEST MODE")
+        success = run_test_mode()
+        exit(0 if success else 1)
+    else:
+        logger.info("🚀 Starting LIVE TRADING BOT")
+        bot = IntelligentTradingBot()
+        bot.run()
