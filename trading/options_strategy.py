@@ -20,7 +20,7 @@ class OptionsStrategyEngine:
 
     def filter_liquid_options(self, option_chain: List[Dict]) -> List[Dict]:
         """Filter out illiquid options with low volume and open interest"""
-        if not option_chain:  # FIXED: Use 'not option_chain' instead of '.empty'
+        if not option_chain:
             return []
         
         # Filter for options that meet minimum liquidity requirements
@@ -45,7 +45,7 @@ class OptionsStrategyEngine:
     def rank_options(self, options: List[Dict], option_type: str, 
                     current_price: float, confidence: float) -> List[Dict]:
         """Rank options based on liquidity, delta fit, and moneyness"""
-        if not options:  # FIXED: Use 'not options' instead of '.empty'
+        if not options:
             return []
         
         scored_options = []
@@ -93,13 +93,11 @@ class OptionsStrategyEngine:
     def select_best_option(self, symbol: str, prediction: int, confidence: float, 
                           option_chain: List[Dict], current_price: float) -> Optional[Dict]:
         """
-        Select the best option contract based on multiple factors:
-        - Liquidity (volume + open interest)
-        - Delta (matches confidence level)
-        - Moneyness (prefer slightly OTM for better risk/reward)
+        Select the best option contract based on multiple factors.
+        Returns a dictionary with the underlying symbol, not the complex option symbol.
         """
         try:
-            if not option_chain:  # FIXED: Use 'not option_chain' instead of '.empty'
+            if not option_chain:
                 logger.warning(f"No option chain data for {symbol}")
                 return None
             
@@ -110,21 +108,30 @@ class OptionsStrategyEngine:
             type_options = [opt for opt in option_chain if opt.get('type') == option_type]
             liquid_options = self.filter_liquid_options(type_options)
             
-            if not liquid_options:  # FIXED: Use 'not liquid_options' instead of '.empty'
+            if not liquid_options:
                 logger.warning(f"No liquid {option_type} options found for {symbol}")
                 return None
             
             # Rank options based on our criteria
             ranked_options = self.rank_options(liquid_options, option_type, current_price, confidence)
             
-            if not ranked_options:  # FIXED: Use 'not ranked_options' instead of '.empty'
+            if not ranked_options:
                 logger.warning(f"No suitable {option_type} options found for {symbol} after ranking")
                 return None
             
             # Select the top-ranked option
             best_option = ranked_options[0]
             
-            return best_option
+            # Return the essential information needed for order placement
+            # NOT the complex option symbol that causes the error
+            return {
+                'symbol': symbol,  # The underlying stock symbol (e.g., 'AAPL')
+                'type': option_type,  # 'call' or 'put'
+                'strike': best_option.get('strike'),
+                'expiration': best_option.get('expiration'),
+                'price': best_option.get('price'),
+                'delta': best_option.get('delta')
+            }
             
         except Exception as e:
             logger.error(f"Error selecting best option for {symbol}: {e}")
