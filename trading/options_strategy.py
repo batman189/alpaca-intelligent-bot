@@ -18,15 +18,16 @@ class OptionsStrategyEngine:
             'low_confidence': {'min': 0.45, 'max': 0.65}     # For confidence < 0.65
         }
 
-    def filter_liquid_options(self, option_chain: pd.DataFrame) -> pd.DataFrame:
+    def filter_liquid_options(self, option_chain: List[Dict]) -> List[Dict]:
         """Filter out illiquid options with low volume and open interest"""
-        if option_chain is None or option_chain.empty:
-            return pd.DataFrame()
+        if not option_chain:  # FIXED: Use 'not option_chain' instead of '.empty'
+            return []
         
         # Filter for options that meet minimum liquidity requirements
-        liquid_options = option_chain[
-            (option_chain['volume'] >= self.min_volume) & 
-            (option_chain['open_interest'] >= self.min_open_interest)
+        liquid_options = [
+            option for option in option_chain
+            if option.get('volume', 0) >= self.min_volume 
+            and option.get('open_interest', 0) >= self.min_open_interest
         ]
         
         logger.debug(f"Filtered from {len(option_chain)} to {len(liquid_options)} liquid options")
@@ -41,54 +42,56 @@ class OptionsStrategyEngine:
         else:
             return self.delta_targets['low_confidence']
 
-    def rank_options(self, options: pd.DataFrame, option_type: str, 
-                    current_price: float, confidence: float) -> pd.DataFrame:
+    def rank_options(self, options: List[Dict], option_type: str, 
+                    current_price: float, confidence: float) -> List[Dict]:
         """Rank options based on liquidity, delta fit, and moneyness"""
-        if options.empty:
-            return pd.DataFrame()
+        if not options:  # FIXED: Use 'not options' instead of '.empty'
+            return []
         
-        # Calculate absolute distance from current price
-        options['price_distance_pct'] = abs(options['strike'] - current_price) / current_price
-        
-        # Get target delta range for our confidence level
+        scored_options = []
         delta_target = self.get_delta_target(confidence)
         target_min_delta = delta_target['min']
         target_max_delta = delta_target['max']
         
-        # Score each option based on multiple factors
-        options['liquidity_score'] = np.log1p(options['volume'] * options['open_interest'])
-        
-        # Delta fitness score (how close to our target range)
-        options['delta_fitness'] = 0
-        in_range_mask = (options['delta'] >= target_min_delta) & (options['delta'] <= target_max_delta)
-        options.loc[in_range_mask, 'delta_fitness'] = 1 - (2 * abs(options['delta'] - 
-                                                                 (target_min_delta + target_max_delta)/2))
-        
-        # Moneyness score (prefer slightly OTM for better risk/reward)
-        if option_type == 'call':
-            options['moneyness_score'] = np.where(
-                options['strike'] > current_price, 
-                0.7,  # Prefer OTM calls for cheaper premium
-                0.3    # Discourage ITM calls as they're more expensive
+        for option in options:
+            # Calculate absolute distance from current price
+            price_distance_pct = abs(option['strike'] - current_price) / current_price
+            
+            # Liquidity score
+            liquidity_score = np.log1p(option.get('volume', 1) * option.get('open_interest', 1))
+            
+            # Delta fitness score (how close to our target range)
+            delta = option.get('delta', 0.5)
+            delta_fitness = 0
+            if target_min_delta <= delta <= target_max_delta:
+                delta_fitness = 1 - (2 * abs(delta - (target_min_delta + target_max_delta)/2))
+            
+            # Moneyness score (prefer slightly OTM for better risk/reward)
+            if option_type == 'call':
+                moneyness_score = 0.7 if option['strike'] > current_price else 0.3
+            else:  # put
+                moneyness_score = 0.7 if option['strike'] < current_price else 0.3
+            
+            # Combined score (weighted factors)
+            combined_score = (
+                liquidity_score * 0.4 +
+                delta_fitness * 0.4 +
+                moneyness_score * 0.2
             )
-        else:  # put
-            options['moneyness_score'] = np.where(
-                options['strike'] < current_price,
-                0.7,  # Prefer OTM puts for cheaper premium
-                0.3    # Discourage ITM puts
-            )
+            
+            scored_options.append({
+                **option,
+                'liquidity_score': liquidity_score,
+                'delta_fitness': delta_fitness,
+                'moneyness_score': moneyness_score,
+                'combined_score': combined_score
+            })
         
-        # Combined score (weighted factors)
-        options['combined_score'] = (
-            options['liquidity_score'] * 0.4 +
-            options['delta_fitness'] * 0.4 +
-            options['moneyness_score'] * 0.2
-        )
-        
-        return options.sort_values('combined_score', ascending=False)
+        # Sort by combined score descending
+        return sorted(scored_options, key=lambda x: x['combined_score'], reverse=True)
 
     def select_best_option(self, symbol: str, prediction: int, confidence: float, 
-                          option_chain: pd.DataFrame, current_price: float) -> Optional[Dict]:
+                          option_chain: List[Dict], current_price: float) -> Optional[Dict]:
         """
         Select the best option contract based on multiple factors:
         - Liquidity (volume + open interest)
@@ -96,7 +99,7 @@ class OptionsStrategyEngine:
         - Moneyness (prefer slightly OTM for better risk/reward)
         """
         try:
-            if option_chain is None or option_chain.empty:
+            if not option_chain:  # FIXED: Use 'not option_chain' instead of '.empty'
                 logger.warning(f"No option chain data for {symbol}")
                 return None
             
@@ -104,40 +107,24 @@ class OptionsStrategyEngine:
             option_type = 'call' if prediction == 1 else 'put'
             
             # Filter for the right type and liquid options
-            type_options = option_chain[option_chain['type'] == option_type]
+            type_options = [opt for opt in option_chain if opt.get('type') == option_type]
             liquid_options = self.filter_liquid_options(type_options)
             
-            if liquid_options.empty:
+            if not liquid_options:  # FIXED: Use 'not liquid_options' instead of '.empty'
                 logger.warning(f"No liquid {option_type} options found for {symbol}")
                 return None
             
             # Rank options based on our criteria
             ranked_options = self.rank_options(liquid_options, option_type, current_price, confidence)
             
-            if ranked_options.empty:
+            if not ranked_options:  # FIXED: Use 'not ranked_options' instead of '.empty'
                 logger.warning(f"No suitable {option_type} options found for {symbol} after ranking")
                 return None
             
             # Select the top-ranked option
-            best_option = ranked_options.iloc[0]
-            best_contract = {
-                'symbol': best_option['symbol'],
-                'type': option_type,
-                'strike': float(best_option['strike']),
-                'expiration': best_option['expiration'],
-                'price': float(best_option['price']),
-                'delta': float(best_option['delta']),
-                'volume': int(best_option['volume']),
-                'open_interest': int(best_option['open_interest']),
-                'score': float(best_option['combined_score'])
-            }
+            best_option = ranked_options[0]
             
-            logger.info(f"Selected {option_type.upper()} for {symbol}: "
-                       f"Strike ${best_contract['strike']}, "
-                       f"Delta {best_contract['delta']:.2f}, "
-                       f"Volume {best_contract['volume']}")
-            
-            return best_contract
+            return best_option
             
         except Exception as e:
             logger.error(f"Error selecting best option for {symbol}: {e}")
