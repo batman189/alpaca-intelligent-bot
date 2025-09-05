@@ -15,10 +15,19 @@ class ExecutionClient:
         )
         
     def get_current_positions(self) -> Dict:
-        """Get current positions from Alpaca"""
+        """Get current positions from Alpaca with proper data structure"""
         try:
             positions = self.api.list_positions()
-            return {pos.symbol: float(pos.qty) for pos in positions}
+            position_dict = {}
+            for pos in positions:
+                # Return position data as a dictionary with details
+                position_dict[pos.symbol] = {
+                    'qty': float(pos.qty),
+                    'entry_price': float(pos.avg_entry_price),
+                    'current_value': float(pos.market_value),
+                    'symbol': pos.symbol
+                }
+            return position_dict
         except Exception as e:
             logger.error(f"Error getting positions: {e}")
             return {}
