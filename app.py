@@ -247,6 +247,13 @@ class IntelligentTradingBot:
                 return
                 
             # 3. Get prediction from model
+            # === NaN SAFETY NET ===
+            if hasattr(prediction_features, 'fillna'):
+                prediction_features = prediction_features.fillna(0)
+            else:
+                prediction_features = np.nan_to_num(prediction_features, nan=0.0)
+            # === END SAFETY NET ===
+
             prediction, confidence = predictor.predict(prediction_features)
             
             # 3.5. DYNAMIC CONFIDENCE ADJUSTMENT: Learn from historical performance
@@ -390,6 +397,17 @@ class IntelligentTradingBot:
                 logger.error(f"Unexpected error in main loop: {e}")
                 time.sleep(30)
 
+# === ADD THIS SECTION FOR REMOTE TESTING ===
+@app.route('/test')
+def run_remote_test():
+    """Remote test endpoint for Render hosting"""
+    try:
+        success = run_test_mode()
+        return {'status': 'success' if success else 'failed', 'message': 'Check Render logs for details.'}
+    except Exception as e:
+        return {'status': 'error', 'message': str(e)}, 500
+# === END ADDITION ===
+
 def run_test_mode():
     """Test mode that verifies all components are working"""
     logger.info("🚀 STARTING COMPREHENSIVE SYSTEM TEST")
@@ -458,16 +476,7 @@ def run_test_mode():
     
     logger.info("🎉 SYSTEM TEST COMPLETE - Ready for market open!")
     return True
-# === ADD THIS SECTION FOR REMOTE TESTING ===
-@app.route('/test')
-def run_remote_test():
-    """Remote test endpoint for Render hosting"""
-    try:
-        success = run_test_mode()
-        return {'status': 'success' if success else 'failed', 'message': 'Check Render logs for details.'}
-    except Exception as e:
-        return {'status': 'error', 'message': str(e)}, 500
-# === END ADDITION ===
+
 if __name__ == "__main__":
     if TEST_MODE:
         logger.info("🛠️ Running in TEST MODE")
