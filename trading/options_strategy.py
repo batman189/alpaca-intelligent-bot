@@ -101,6 +101,12 @@ class OptionsStrategyEngine:
                 logger.warning(f"No option chain data for {symbol}")
                 return None
             
+            # Add debug logging to see what options data we're getting
+            logger.info(f"Option chain for {symbol} has {len(option_chain)} contracts")
+            if option_chain:
+                sample_option = option_chain[0]
+                logger.info(f"Sample option: {sample_option.get('symbol')} {sample_option.get('type')} ${sample_option.get('strike')} {sample_option.get('expiration')}")
+            
             # Determine option type based on prediction
             option_type = 'call' if prediction == 1 else 'put'
             
