@@ -3,10 +3,11 @@ import threading
 import logging
 import time
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import requests
 import numpy as np
+import random
 
 # Configure logging
 logging.basicConfig(
@@ -80,7 +81,7 @@ except ImportError as e:
         def load_model(self, path):
             return False
         def predict(self, features):
-            return 0, 0.5
+            return random.randint(0, 1), random.uniform(0.5, 0.8)
 
 try:
     from trading.portfolio_manager import PortfolioManager
@@ -170,11 +171,11 @@ class IntelligentTradingBot:
             try:
                 success = predictor.load_model('models/trained_model.pkl')
                 if not success:
-                    logger.warning("Failed to load trained model")
+                    logger.warning("Failed to load trained model. Using random predictions.")
             except Exception as e:
                 logger.error(f"Error loading model: {e}")
         else:
-            logger.warning("No model available. Running in analysis-only mode.")
+            logger.warning("No model available. Using random predictions.")
         
     def assess_trend(self, data):
         """
@@ -182,13 +183,16 @@ class IntelligentTradingBot:
         Returns 'bullish', 'bearish', or 'neutral'
         """
         try:
-            if len(data) < 20:
+            if data is None or len(data) < 20:
                 return 'neutral'
                 
             # Simple trend logic: compare current price to medium-term SMA
             current_close = data['close'].iloc[-1]
             medium_sma = data['close'].rolling(window=20).mean().iloc[-1]
             
+            if pd.isna(medium_sma):
+                return 'neutral'
+                
             if current_close > medium_sma * 1.02:  # 2% above SMA
                 return 'bullish'
             elif current_close < medium_sma * 0.98: # 2% below SMA
@@ -211,6 +215,10 @@ class IntelligentTradingBot:
                 LOOKBACK_WINDOW
             )
             
+            if not market_data:
+                logger.warning("No market data available. Skipping cycle.")
+                return
+                
             # 2. Get account information
             account_info = data_client.get_account_info()
             
@@ -240,6 +248,9 @@ class IntelligentTradingBot:
             # 1. Feature engineering
             engineered_data = feature_engineer.calculate_technical_indicators(data)
             
+            if engineered_data is None:
+                return
+                
             # 2. Prepare features for prediction
             prediction_features = feature_engineer.prepare_features_for_prediction(engineered_data)
             
@@ -247,13 +258,19 @@ class IntelligentTradingBot:
                 return
                 
             # 3. Get prediction from model
-            # === NaN SAFETY NET ===
+            # Convert to numpy array and ensure no NaN values
             if hasattr(prediction_features, 'fillna'):
                 prediction_features = prediction_features.fillna(0)
-            else:
-                prediction_features = np.nan_to_num(prediction_features, nan=0.0)
-            # === END SAFETY NET ===
-
+            
+            if hasattr(prediction_features, 'values'):
+                prediction_features = prediction_features.values
+                
+            prediction_features = np.nan_to_num(prediction_features, nan=0.0)
+            
+            # Ensure we have a 2D array for prediction
+            if len(prediction_features.shape) == 1:
+                prediction_features = prediction_features.reshape(1, -1)
+                
             prediction, confidence = predictor.predict(prediction_features)
             
             # 3.5. DYNAMIC CONFIDENCE ADJUSTMENT: Learn from historical performance
