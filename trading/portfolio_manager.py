@@ -1,76 +1,97 @@
-import numpy as np
 import logging
-import time  # ADD THIS IMPORT
 from typing import Dict, List
-import os
 
 logger = logging.getLogger(__name__)
 
-# Direct environment variable access
-RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.02'))
-MAX_PORTFOLIO_RISK = float(os.getenv('MAX_PORTFOLIO_RISK', '0.1'))
-MIN_CONFIDENCE = float(os.getenv('MIN_CONFIDENCE', '0.6'))
-
 class PortfolioManager:
     def __init__(self):
-        self.current_positions = {}
-        self.pending_orders = []
+        self.max_portfolio_risk = 0.1  # Maximum 10% portfolio risk
+        self.stop_loss_pct = 0.05  # 5% stop loss
+        self.take_profit_pct = 0.10  # 10% take profit
         
-    def calculate_position_size(self, account_equity: float, entry_price: float, 
-                              stop_loss_price: float, confidence: float) -> int:
-        if not all([account_equity, entry_price, stop_loss_price]):
-            return 0
+    def should_enter_trade(self, symbol: str, confidence: float, current_positions: Dict) -> bool:
+        """
+        Determine if we should enter a new trade based on current positions and risk
+        """
+        try:
+            # Check if we already have a position in this symbol
+            if symbol in current_positions:
+                logger.info(f"Skipping {symbol} - already have a position")
+                return False
+                
+            # Check if we have too many positions already
+            if len(current_positions) >= 5:  # Max 5 simultaneous positions
+                logger.info(f"Skipping {symbol} - maximum positions reached ({len(current_positions)})")
+                return False
+                
+            # Confidence check
+            if confidence < 0.6:
+                logger.info(f"Skipping {symbol} - confidence too low ({confidence:.2f})")
+                return False
+                
+            return True
             
-        risk_per_share = entry_price - stop_loss_price
-        if risk_per_share <= 0:
-            return 0
-            
-        max_risk_amount = account_equity * RISK_PER_TRADE * confidence
-        shares = max_risk_amount / risk_per_share
-        
-        max_shares = (account_equity * MAX_PORTFOLIO_RISK) / entry_price
-        shares = min(shares, max_shares)
-        
-        return int(max(1, shares))
-        
-    def determine_stop_loss(self, entry_price: float, volatility: float, 
-                          pattern_type: str = None) -> float:
-        atr_based_stop = entry_price * (1 - 2 * volatility)
-        
-        if pattern_type == 'breakout':
-            stop_loss = entry_price * 0.98
-        elif pattern_type == 'trend':
-            stop_loss = atr_based_stop
-        else:
-            stop_loss = entry_price * 0.95
-            
-        return max(stop_loss, entry_price * 0.90)
-        
-    def should_enter_trade(self, symbol: str, confidence: float, 
-                         current_positions: Dict) -> bool:
-        if confidence < MIN_CONFIDENCE:
+        except Exception as e:
+            logger.error(f"Error in should_enter_trade for {symbol}: {e}")
             return False
             
-        if symbol in current_positions:
-            logger.info(f"Already in position for {symbol}")
-            return False
-            
-        if len(current_positions) >= 5:
-            logger.info("Maximum positions reached")
-            return False
-            
-        return True
-        
-    def manage_risk(self, current_positions: Dict, market_data: Dict) -> List:
+    def manage_risk(self, current_positions: Dict, market_data: Dict) -> List[Dict]:
+        """
+        Manage risk on existing positions and generate exit signals
+        FIXED: Properly handle position data structure
+        """
         exit_signals = []
         
-        for symbol, position in current_positions.items():
-            current_price = market_data.get(symbol, {}).get('close', 0)
-            if current_price <= position.get('stop_loss', 0):
+        try:
+            for symbol, position_data in current_positions.items():
+                # FIX: Check if position_data is a dictionary or just quantity
+                if isinstance(position_data, dict):
+                    # Position data is a dictionary with details
+                    quantity = position_data.get('qty', 0)
+                    entry_price = position_data.get('entry_price', 0)
+                    current_value = position_data.get('current_value', 0)
+                else:
+                    # Position data is just the quantity (float)
+                    quantity = position_data
+                    entry_price = 0  # Unknown without more data
+                    current_value = 0
+                
+                # Skip if no position or unable to get market data
+                if quantity == 0 or symbol not in market_data or market_data[symbol] is None:
+                    continue
+                    
+                # Get current price from market data
+                current_price = market_data[symbol]['close'].iloc[-1] if hasattr(market_data[symbol], 'iloc') else 100
+                
+                # Calculate P&L if we have entry price
+                if entry_price > 0:
+                    pnl_pct = (current_price - entry_price) / entry_price
+                    
+                    # Check for stop loss
+                    if pnl_pct <= -self.stop_loss_pct:
+                        exit_signals.append({
+                            'symbol': symbol,
+                            'reason': 'stop_loss',
+                            'pnl_pct': pnl_pct
+                        })
+                    
+                    # Check for take profit
+                    elif pnl_pct >= self.take_profit_pct:
+                        exit_signals.append({
+                            'symbol': symbol,
+                            'reason': 'take_profit',
+                            'pnl_pct': pnl_pct
+                        })
+                
+                # Simple exit rule: if we have any position, consider exit based on other factors
+                # This is a placeholder for more sophisticated risk management
                 exit_signals.append({
                     'symbol': symbol,
-                    'reason': 'stop_loss',
-                    'price': current_price
+                    'reason': 'risk_management',
+                    'pnl_pct': 0
                 })
                 
+        except Exception as e:
+            logger.error(f"Error in manage_risk: {e}")
+            
         return exit_signals
