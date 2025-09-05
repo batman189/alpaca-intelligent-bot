@@ -7,6 +7,7 @@ from datetime import datetime
 import os
 import requests
 import numpy as np
+import json
 
 # Configure logging
 logging.basicConfig(
@@ -133,6 +134,27 @@ portfolio_manager = PortfolioManager()
 execution_client = ExecutionClient()
 options_strategy = OptionsStrategyEngine()
 reinforcement_learner = ReinforcementLearner()
+
+def send_discord_alert(message, color=0x00ff00):
+    """Send a trade alert to Discord"""
+    webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
+    if not webhook_url:
+        return
+        
+    payload = {
+        "embeds": [{
+            "title": "🤖 Trading Bot Alert",
+            "description": message,
+            "color": color,
+            "timestamp": datetime.now().isoformat()
+        }]
+    }
+    
+    try:
+        response = requests.post(webhook_url, json=payload, timeout=5)
+        response.raise_for_status()
+    except Exception as e:
+        logger.error(f"Failed to send Discord alert: {e}")
 
 def train_model_if_needed():
     """Train model if it doesn't exist - BUT DON'T CRASH IF IT FAILS"""
@@ -280,6 +302,8 @@ class IntelligentTradingBot:
                     # For counter-trend, require higher confidence
                     if confidence < 0.75:
                         logger.info(f"Confidence {confidence:.2f} too low for counter-trend trade. Skipping.")
+                        # Log missed opportunity
+                        self.log_missed_opportunity(symbol, confidence, "counter_trend_low_confidence")
                         return
                         
                 elif prediction == 1 and daily_trend == 'bullish':
@@ -291,9 +315,25 @@ class IntelligentTradingBot:
             # 5. Make trading decision (pass context for potential use in execution)
             if prediction == 1 and confidence >= PREDICTION_THRESHOLD:
                 self.execute_options_trade(symbol, engineered_data, account_info, confidence, prediction, trade_context)
+            else:
+                # Log why the trade was not taken
+                if prediction == 1 and confidence < PREDICTION_THRESHOLD:
+                    self.log_missed_opportunity(symbol, confidence, "below_confidence_threshold")
+                elif prediction == 0 and confidence >= 0.7:
+                    self.log_missed_opportunity(symbol, confidence, "bearish_signal")
                 
         except Exception as e:
             logger.error(f"Error analyzing {symbol}: {e}")
+            
+    def log_missed_opportunity(self, symbol, confidence, reason):
+        """Log why a trade opportunity was missed"""
+        logger.info(f"❌ MISSED OPPORTUNITY: {symbol} - {reason} (Confidence: {confidence:.2f})")
+        # Log to file for analysis
+        try:
+            with open('missed_opportunities.log', 'a') as f:
+                f.write(f"{datetime.now()},{symbol},{confidence:.2f},{reason}\n")
+        except Exception as e:
+            logger.error(f"Failed to log missed opportunity: {e}")
             
     def execute_options_trade(self, symbol, data, account_info, confidence, prediction, trade_context="standard"):
         """Execute OPTIONS trade based on analysis"""
@@ -305,6 +345,7 @@ class IntelligentTradingBot:
             # Check if we should trade this symbol based on historical performance
             if not reinforcement_learner.should_trade_symbol(symbol, confidence):
                 logger.info(f"Skipping {symbol} due to poor historical performance")
+                self.log_missed_opportunity(symbol, confidence, "poor_historical_performance")
                 return
                 
             current_price = data['close'].iloc[-1] if hasattr(data, 'iloc') else 100
@@ -314,6 +355,7 @@ class IntelligentTradingBot:
             
             if not option_chain:
                 logger.warning(f"No options chain available for {symbol}")
+                self.log_missed_opportunity(symbol, confidence, "no_options_chain")
                 return
                 
             # Select best option based on prediction
@@ -323,6 +365,7 @@ class IntelligentTradingBot:
             
             if not selected_option:
                 logger.warning(f"No suitable option found for {symbol}")
+                self.log_missed_opportunity(symbol, confidence, "no_suitable_option")
                 return
                 
             # Calculate position size
@@ -350,10 +393,9 @@ class IntelligentTradingBot:
                 'contracts': contracts,
                 'entry_price': selected_option['price'],
                 'timestamp': datetime.now().isoformat(),
-                'trade_context': trade_context, # Record the context for learning
-                # CRITICAL FIX: Add dummy P&L and outcome to start collecting data
-                'pnl': 0.0,  # Temporary dummy value - to be updated manually later
-                'actual_outcome': 1 if prediction == 1 else 0  # Temporary assumption
+                'trade_context': trade_context,
+                'pnl': 0.0,
+                'actual_outcome': 1 if prediction == 1 else 0
             }
             
             # Place options order
@@ -367,7 +409,10 @@ class IntelligentTradingBot:
                 
             if success:
                 logger.info(f"Options trade executed: {contracts} contracts of {selected_option['symbol']} [{trade_context}]")
-                # Record trade for future learning - NOW WITH CRITICAL DATA
+                # Send Discord alert
+                alert_msg = f"**{symbol}** - {selected_option['type'].upper()} ${selected_option['strike']}\nContracts: {contracts}\nConfidence: {confidence:.2f}\nContext: {trade_context}"
+                send_discord_alert(alert_msg, color=0x00ff00)
+                # Record trade for future learning
                 reinforcement_learner.record_trade(trade_data)
                 
         except Exception as e:
@@ -382,6 +427,9 @@ class IntelligentTradingBot:
             for signal in exit_signals:
                 execution_client.close_position(signal['symbol'])
                 logger.info(f"Exit signal: Closed {signal['symbol']}")
+                # Send Discord alert for exit
+                alert_msg = f"**EXIT** - {signal['symbol']}\nReason: {signal.get('reason', 'risk_management')}"
+                send_discord_alert(alert_msg, color=0xff0000)  # Red for exits
                 
         except Exception as e:
             logger.error(f"Error managing positions: {e}")
