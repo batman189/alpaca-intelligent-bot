@@ -1,6 +1,7 @@
 import logging
 import pickle
 import numpy as np
+import random
 from sklearn.ensemble import GradientBoostingClassifier
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,6 @@ class IntelligentPredictor:
     
     def _random_prediction(self):
         """Fallback random prediction when model is not available"""
-        import random
         prediction = random.randint(0, 1)
         confidence = random.uniform(0.5, 0.8)
         return prediction, confidence
