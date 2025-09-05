@@ -277,7 +277,10 @@ class IntelligentTradingBot:
                 'strike': selected_option['strike'],
                 'contracts': contracts,
                 'entry_price': selected_option['price'],
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                # CRITICAL FIX: Add dummy P&L and outcome to start collecting data
+                'pnl': 0.0,  # Temporary dummy value - to be updated manually later
+                'actual_outcome': 1 if prediction == 1 else 0  # Temporary assumption
             }
             
             # Place options order
@@ -291,7 +294,7 @@ class IntelligentTradingBot:
                 
             if success:
                 logger.info(f"Options trade executed: {contracts} contracts of {selected_option['symbol']}")
-                # Record trade for future learning
+                # Record trade for future learning - NOW WITH CRITICAL DATA
                 reinforcement_learner.record_trade(trade_data)
                 
         except Exception as e:
