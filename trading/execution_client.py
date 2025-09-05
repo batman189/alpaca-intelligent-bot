@@ -2,7 +2,6 @@ import logging
 import alpaca_trade_api as tradeapi
 from typing import Dict
 import os
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -28,44 +27,21 @@ class ExecutionClient:
                           strike: float, expiration: str) -> bool:
         """
         Place an options order with Alpaca
-        FIXED: Correct option symbol formatting for Alpaca with proper strike formatting
+        NOW: Uses the exact option symbol from Alpaca's data (no formatting needed)
         """
         try:
+            # The 'symbol' parameter now contains the EXACT option symbol from Alpaca
+            # No need to format it - it's already in the correct format
+            
             # Convert order type to side
             side = 'buy' if order_type.lower() == 'call' else 'sell'
             
-            # Build the option symbol properly for Alpaca
-            # Correct format: {SYMBOL}{EXPIRATION}{TYPE}{STRIKE}
+            logger.info(f"Placing options order: {side.upper()} {quantity} contracts of {symbol}")
+            logger.info(f"Option details: {order_type} ${strike} expiring {expiration}")
             
-            # Format expiration from YYYY-MM-DD to YYMMDD
-            expiration_date = datetime.strptime(expiration, '%Y-%m-%d')
-            expiration_formatted = expiration_date.strftime('%y%m%d')
-            
-            # Format strike price correctly - THIS IS THE CRITICAL FIX
-            # Strike price needs to be in cents, padded to 8 digits
-            # Examples: 
-            # - $150.00 strike = 15000 cents = "00015000"
-            # - $211.00 strike = 21100 cents = "00021100"  
-            strike_cents = int(strike * 100)
-            strike_formatted = f"{strike_cents:08d}"  # This pads to 8 digits with leading zeros
-            
-            # Build the option symbol
-            option_type_char = 'C' if order_type.lower() == 'call' else 'P'
-            option_symbol = f"{symbol}{expiration_formatted}{option_type_char}{strike_formatted}"
-            
-            logger.info(f"Placing options order: {side.upper()} {quantity} contracts of {option_symbol}")
-            logger.info(f"Option details: {symbol} {expiration} {order_type} ${strike}")
-            
-            # First, try to get the option asset to verify it exists
-            try:
-                asset = self.api.get_asset(option_symbol)
-                logger.info(f"Option asset verified: {asset.symbol}")
-            except:
-                logger.warning(f"Option asset not found, attempting order anyway: {option_symbol}")
-            
-            # Place the order
+            # Place the order using the exact symbol from Alpaca
             order = self.api.submit_order(
-                symbol=option_symbol,
+                symbol=symbol,  # This is the exact symbol from Alpaca's options chain
                 qty=quantity,
                 side=side,
                 type='market',
