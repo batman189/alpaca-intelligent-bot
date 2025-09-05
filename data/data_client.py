@@ -80,7 +80,7 @@ class DataClient:
                 freq = 'D'
             else:
                 start_date = end_date - timedelta(days=30)
-                freq = 'H'
+                freq = 'h'
             
             dates = pd.date_range(start=start_date, end=end_date, freq=freq)
             if len(dates) > limit:
