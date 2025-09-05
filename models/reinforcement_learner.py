@@ -12,28 +12,23 @@ class ReinforcementLearner:
     def __init__(self):
         self.trade_history_file = 'data/trade_history.json'
         self.performance_metrics = {}
-        self.learning_rate = 0.1  # How quickly to adapt to new information
+        self.learning_rate = 0.1
         
     def record_trade(self, trade_data: Dict):
         """Record a completed trade for learning"""
         try:
-            # Ensure directory exists
             os.makedirs('data', exist_ok=True)
             
-            # Load existing history
             history = self.load_trade_history()
             
-            # Add new trade
             trade_data['recorded_at'] = datetime.now().isoformat()
             history.append(trade_data)
             
-            # Save updated history
             with open(self.trade_history_file, 'w') as f:
                 json.dump(history, f, indent=2)
                 
             logger.info(f"Trade recorded: {trade_data['symbol']} - P&L: ${trade_data.get('pnl', 0):.2f}")
             
-            # Update performance metrics
             self.update_performance_metrics(trade_data)
             
         except Exception as e:
@@ -81,12 +76,10 @@ class ReinforcementLearner:
         """Adjust confidence based on historical performance"""
         if symbol in self.performance_metrics:
             metrics = self.performance_metrics[symbol]
-            # Increase confidence for symbols with good track record
             if metrics['success_rate'] > 0.6:
                 adjusted_confidence = min(0.95, base_confidence * (1 + self.learning_rate))
                 logger.info(f"Boosting confidence for {symbol} from {base_confidence:.2f} to {adjusted_confidence:.2f}")
                 return adjusted_confidence
-            # Decrease confidence for poor performers
             elif metrics['success_rate'] < 0.4:
                 adjusted_confidence = max(0.1, base_confidence * (1 - self.learning_rate))
                 logger.info(f"Reducing confidence for {symbol} from {base_confidence:.2f} to {adjusted_confidence:.2f}")
@@ -106,9 +99,6 @@ class ReinforcementLearner:
         }
         
         self.record_trade(trade_data)
-        
-        # Here you would typically update your ML model weights
-        # For now, we'll use the confidence adjustment system
         logger.info(f"Learning from trade: {symbol} - Prediction: {prediction}, Actual: {actual_outcome}, P&L: ${pnl:.2f}")
     
     def get_symbol_performance(self, symbol: str) -> Dict:
@@ -125,12 +115,10 @@ class ReinforcementLearner:
         """Determine if we should trade a symbol based on historical performance"""
         metrics = self.get_symbol_performance(symbol)
         
-        # Don't trade symbols with very poor track records
         if metrics['total_trades'] > 5 and metrics['success_rate'] < 0.3:
             logger.info(f"Avoiding {symbol} due to poor historical performance (success rate: {metrics['success_rate']:.2f})")
             return False
         
-        # Require higher confidence for symbols with mixed performance
         if metrics['success_rate'] < 0.5 and confidence < 0.7:
             return False
             
