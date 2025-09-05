@@ -20,7 +20,6 @@ class IntelligentPredictor:
             return True
         except Exception as e:
             logger.error(f"Error loading model: {e}")
-            # Don't create a new model, just use random predictions
             self.is_trained = False
             return False
             
@@ -44,7 +43,7 @@ class IntelligentPredictor:
             # Check for NaN values and replace them
             features = np.nan_to_num(features, nan=0.0)
             
-            # Make prediction
+            # Make prediction - REMOVED ANY .columns ATTRIBUTE ACCESS
             prediction = self.model.predict(features)[0]
             confidence = np.max(self.model.predict_proba(features))
             
