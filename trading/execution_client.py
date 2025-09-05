@@ -27,21 +27,27 @@ class ExecutionClient:
                           strike: float, expiration: str) -> bool:
         """
         Place an options order with Alpaca
-        NOW: Uses the exact option symbol from Alpaca's data (no formatting needed)
+        Uses the exact option symbol from Alpaca's options chain
         """
         try:
-            # The 'symbol' parameter now contains the EXACT option symbol from Alpaca
-            # No need to format it - it's already in the correct format
-            
+            # The 'symbol' parameter contains the EXACT option symbol from Alpaca
             # Convert order type to side
             side = 'buy' if order_type.lower() == 'call' else 'sell'
             
             logger.info(f"Placing options order: {side.upper()} {quantity} contracts of {symbol}")
             logger.info(f"Option details: {order_type} ${strike} expiring {expiration}")
             
+            # Verify the option exists before placing order
+            try:
+                asset = self.api.get_asset(symbol)
+                logger.info(f"Option asset verified: {asset.symbol}")
+            except Exception as e:
+                logger.error(f"Option asset verification failed: {e}")
+                return False
+            
             # Place the order using the exact symbol from Alpaca
             order = self.api.submit_order(
-                symbol=symbol,  # This is the exact symbol from Alpaca's options chain
+                symbol=symbol,
                 qty=quantity,
                 side=side,
                 type='market',
