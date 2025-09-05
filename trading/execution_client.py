@@ -2,6 +2,7 @@ import logging
 import alpaca_trade_api as tradeapi
 from typing import Dict
 import os
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +37,15 @@ class ExecutionClient:
             # Build the option symbol properly for Alpaca
             # Format: {SYMBOL}{EXPIRATION}{TYPE}{STRIKE}
             # Example: SPY240321C00500000 (SPY, Mar 21 2024, Call, $500 strike)
-            strike_formatted = f"{int(strike * 1000):08d}"  # Convert to integer and pad to 8 digits
-            expiration_formatted = expiration.replace('-', '')[2:8]  # YYMMDD format
             
+            # Format expiration from YYYY-MM-DD to YYMMDD
+            expiration_date = datetime.strptime(expiration, '%Y-%m-%d')
+            expiration_formatted = expiration_date.strftime('%y%m%d')
+            
+            # Format strike price (convert to integer and pad to 8 digits)
+            strike_formatted = f"{int(strike * 1000):08d}"
+            
+            # Build the option symbol
             option_symbol = f"{symbol}{expiration_formatted}{order_type[0].upper()}{strike_formatted}"
             
             logger.info(f"Placing options order: {side.upper()} {quantity} contracts of {option_symbol}")
