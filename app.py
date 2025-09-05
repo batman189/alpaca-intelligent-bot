@@ -43,7 +43,7 @@ MAX_PORTFOLIO_RISK = float(os.getenv('MAX_PORTFOLIO_RISK', '0.1'))
 ENABLE_TRADING = os.getenv('ENABLE_TRADING', 'false').lower() == 'true'
 PAPER_TRADING = os.getenv('PAPER_TRADING', 'true').lower() == 'true'
 TRADING_STRATEGY = os.getenv('TRADING_STRATEGY', 'options')
-OPTIONS_EXPIRATION = os.getenv('OPTIONS_EXPIRATION', '2025-03-21')
+OPTIONS_EXPIRATION = os.getenv('OPTIONS_EXPIRATION', '2026-01-16')
 MAX_OPTIONS_POSITIONS = int(os.getenv('MAX_OPTIONS_POSITIONS', '5'))
 
 # Import our modules with simple error handling
@@ -113,6 +113,15 @@ except ImportError as e:
         def calculate_options_position_size(self, *args):
             return 1
 
+try:
+    from models.reinforcement_learner import ReinforcementLearner
+except ImportError as e:
+    logger.error(f"ReinforcementLearner import error: {e}")
+    class ReinforcementLearner:
+        def record_trade(self, *args): pass
+        def adjust_confidence(self, symbol, confidence): return confidence
+        def should_trade_symbol(self, symbol, confidence): return True
+
 # Initialize components
 data_client = DataClient()
 feature_engineer = FeatureEngineer()
@@ -120,6 +129,7 @@ predictor = IntelligentPredictor()
 portfolio_manager = PortfolioManager()
 execution_client = ExecutionClient()
 options_strategy = OptionsStrategyEngine()
+reinforcement_learner = ReinforcementLearner()
 
 def train_model_if_needed():
     """Train model if it doesn't exist"""
@@ -216,18 +226,23 @@ class IntelligentTradingBot:
                 
             # 4. Make trading decision
             if prediction == 1 and confidence >= PREDICTION_THRESHOLD:
-                self.execute_options_trade(symbol, engineered_data, account_info, confidence)
+                self.execute_options_trade(symbol, engineered_data, account_info, confidence, prediction)
                 
         except Exception as e:
             logger.error(f"Error analyzing {symbol}: {e}")
             
-    def execute_options_trade(self, symbol, data, account_info, confidence):
+    def execute_options_trade(self, symbol, data, account_info, confidence, prediction):
         """Execute OPTIONS trade based on analysis"""
         if not ENABLE_TRADING:
             logger.info(f"Would place OPTIONS trade on {symbol} with confidence {confidence:.2f}")
             return
             
         try:
+            # Check if we should trade this symbol based on historical performance
+            if not reinforcement_learner.should_trade_symbol(symbol, confidence):
+                logger.info(f"Skipping {symbol} due to poor historical performance")
+                return
+                
             current_price = data['close'].iloc[-1] if hasattr(data, 'iloc') else 100
             
             # Get detailed options chain
@@ -239,7 +254,7 @@ class IntelligentTradingBot:
                 
             # Select best option based on prediction
             selected_option = options_strategy.select_best_option(
-                symbol, 1, confidence, option_chain, current_price
+                symbol, prediction, confidence, option_chain, current_price
             )
             
             if not selected_option:
@@ -250,6 +265,18 @@ class IntelligentTradingBot:
             contracts = options_strategy.calculate_options_position_size(
                 account_info.get('equity', 10000), selected_option['price'], confidence
             )
+            
+            # Store trade information for learning
+            trade_data = {
+                'symbol': symbol,
+                'prediction': prediction,
+                'confidence': confidence,
+                'option_type': selected_option['type'],
+                'strike': selected_option['strike'],
+                'contracts': contracts,
+                'entry_price': selected_option['price'],
+                'timestamp': datetime.now().isoformat()
+            }
             
             # Place options order
             success = execution_client.place_option_order(
@@ -262,6 +289,8 @@ class IntelligentTradingBot:
                 
             if success:
                 logger.info(f"Options trade executed: {contracts} contracts of {selected_option['symbol']}")
+                # Record trade for future learning
+                reinforcement_learner.record_trade(trade_data)
                 
         except Exception as e:
             logger.error(f"Error executing options trade for {symbol}: {e}")
