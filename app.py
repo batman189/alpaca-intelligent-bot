@@ -6,6 +6,7 @@ import pandas as pd
 from datetime import datetime
 import os
 import requests
+import numpy as np
 
 # Configure logging
 logging.basicConfig(
@@ -175,6 +176,29 @@ class IntelligentTradingBot:
         else:
             logger.warning("No model available. Running in analysis-only mode.")
         
+    def assess_trend(self, data):
+        """
+        Determines the trend of a given dataset.
+        Returns 'bullish', 'bearish', or 'neutral'
+        """
+        try:
+            if len(data) < 20:
+                return 'neutral'
+                
+            # Simple trend logic: compare current price to medium-term SMA
+            current_close = data['close'].iloc[-1]
+            medium_sma = data['close'].rolling(window=20).mean().iloc[-1]
+            
+            if current_close > medium_sma * 1.02:  # 2% above SMA
+                return 'bullish'
+            elif current_close < medium_sma * 0.98: # 2% below SMA
+                return 'bearish'
+            else:
+                return 'neutral'
+        except Exception as e:
+            logger.error(f"Error assessing trend: {e}")
+            return 'neutral'
+        
     def run_analysis_cycle(self):
         """Run one complete analysis and trading cycle"""
         logger.info("Starting analysis cycle")
@@ -224,19 +248,45 @@ class IntelligentTradingBot:
                 
             # 3. Get prediction from model
             prediction, confidence = predictor.predict(prediction_features)
-            logger.info(f"{symbol} - Prediction: {prediction}, Confidence: {confidence:.2f}")
+            
+            # 3.5. DYNAMIC CONFIDENCE ADJUSTMENT: Learn from historical performance
+            confidence = reinforcement_learner.adjust_confidence(symbol, confidence)
+            logger.info(f"{symbol} - Prediction: {prediction}, Adjusted Confidence: {confidence:.2f}")
                 
-            # 4. Make trading decision
+            # 4. MULTI-TIMEFRAME ANALYSIS: Check higher timeframe trend
+            daily_data = data_client.get_multiple_historical_bars([symbol], '1Day', 50).get(symbol)
+            trade_context = "standard" # default
+            
+            if daily_data is not None and len(daily_data) > 20:
+                daily_trend = self.assess_trend(daily_data)
+                logger.info(f"{symbol} - Daily Trend: {daily_trend}")
+                
+                # Classify the trade type for smarter decision-making
+                if prediction == 1 and daily_trend == 'bearish':
+                    trade_context = "counter_trend"
+                    logger.info(f"Counter-trend opportunity detected for {symbol}. Proceeding with caution.")
+                    # For counter-trend, require higher confidence
+                    if confidence < 0.75:
+                        logger.info(f"Confidence {confidence:.2f} too low for counter-trend trade. Skipping.")
+                        return
+                        
+                elif prediction == 1 and daily_trend == 'bullish':
+                    trade_context = "with_trend"
+                    logger.info(f"Strong with-trend signal confirmed for {symbol}. High conviction.")
+                    # Optional: Boost confidence for with-trend moves
+                    confidence = min(0.95, confidence * 1.1) # Cap at 0.95
+                    
+            # 5. Make trading decision (pass context for potential use in execution)
             if prediction == 1 and confidence >= PREDICTION_THRESHOLD:
-                self.execute_options_trade(symbol, engineered_data, account_info, confidence, prediction)
+                self.execute_options_trade(symbol, engineered_data, account_info, confidence, prediction, trade_context)
                 
         except Exception as e:
             logger.error(f"Error analyzing {symbol}: {e}")
             
-    def execute_options_trade(self, symbol, data, account_info, confidence, prediction):
+    def execute_options_trade(self, symbol, data, account_info, confidence, prediction, trade_context="standard"):
         """Execute OPTIONS trade based on analysis"""
         if not ENABLE_TRADING:
-            logger.info(f"Would place OPTIONS trade on {symbol} with confidence {confidence:.2f}")
+            logger.info(f"Would place OPTIONS trade on {symbol} with confidence {confidence:.2f} [{trade_context}]")
             return
             
         try:
@@ -268,6 +318,16 @@ class IntelligentTradingBot:
                 account_info.get('equity', 10000), selected_option['price'], confidence
             )
             
+            # ADJUST POSITION SIZE BASED ON TRADE CONTEXT
+            if trade_context == "counter_trend":
+                # Use smaller size for higher-risk counter-trend moves
+                contracts = max(1, int(contracts * 0.5)) # 50% of normal size
+                logger.info(f"Counter-trade: Reducing position size to {contracts} contracts.")
+            elif trade_context == "with_trend":
+                # Optional: Use larger size for high-conviction with-trend moves
+                # contracts = int(contracts * 1.25) # 125% of normal size
+                logger.info(f"With-trend trade: Using standard position size.")
+            
             # Store trade information for learning
             trade_data = {
                 'symbol': symbol,
@@ -278,6 +338,7 @@ class IntelligentTradingBot:
                 'contracts': contracts,
                 'entry_price': selected_option['price'],
                 'timestamp': datetime.now().isoformat(),
+                'trade_context': trade_context, # Record the context for learning
                 # CRITICAL FIX: Add dummy P&L and outcome to start collecting data
                 'pnl': 0.0,  # Temporary dummy value - to be updated manually later
                 'actual_outcome': 1 if prediction == 1 else 0  # Temporary assumption
@@ -293,7 +354,7 @@ class IntelligentTradingBot:
             )
                 
             if success:
-                logger.info(f"Options trade executed: {contracts} contracts of {selected_option['symbol']}")
+                logger.info(f"Options trade executed: {contracts} contracts of {selected_option['symbol']} [{trade_context}]")
                 # Record trade for future learning - NOW WITH CRITICAL DATA
                 reinforcement_learner.record_trade(trade_data)
                 
