@@ -13,8 +13,10 @@ class IntelligentPredictor:
         self.model = None
         self.scaler = StandardScaler()
         self.feature_columns = None
-        
+        self.learning_rate = 0.01
+
     def train_model(self, X_train: pd.DataFrame, y_train: pd.Series):
+        """Train the prediction model"""
         try:
             X_scaled = self.scaler.fit_transform(X_train)
             
@@ -36,6 +38,7 @@ class IntelligentPredictor:
             return False
             
     def predict(self, features: pd.DataFrame) -> Tuple[float, float]:
+        """Make prediction on new data"""
         if self.model is None or features is None:
             return 0.0, 0.0
             
@@ -59,7 +62,31 @@ class IntelligentPredictor:
             logger.error(f"Error making prediction: {e}")
             return 0.0, 0.0
             
+    def update_model_with_trade(self, X_new: pd.DataFrame, y_new: pd.Series, trade_result: Dict):
+        """Update model with new trade data (online learning)"""
+        if self.model is None:
+            return False
+            
+        try:
+            X_scaled = self.scaler.transform(X_new)
+            
+            self.model.set_params(warm_start=True)
+            self.model.n_estimators += 1
+            
+            X_array = X_scaled.astype(np.float32)
+            y_array = y_new.values.astype(np.int32)
+            
+            self.model.fit(X_array, y_array)
+            
+            logger.info(f"Model updated with trade result: {trade_result}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating model: {e}")
+            return False
+            
     def save_model(self, filepath: str):
+        """Save model to file"""
         try:
             joblib.dump({
                 'model': self.model,
@@ -71,6 +98,7 @@ class IntelligentPredictor:
             logger.error(f"Error saving model: {e}")
             
     def load_model(self, filepath: str):
+        """Load model from file"""
         try:
             saved_data = joblib.load(filepath)
             self.model = saved_data['model']
@@ -83,6 +111,7 @@ class IntelligentPredictor:
             return False
             
     def create_training_labels(self, df: pd.DataFrame, horizon: int = 4, threshold: float = 0.02) -> pd.Series:
+        """Create prediction labels for training"""
         if df is None or len(df) < horizon:
             return None
             
