@@ -32,8 +32,8 @@ def health():
 def run_flask_app():
     app.run(host='0.0.0.0', port=10000, debug=False, use_reloader=False)
 
-# DIRECT ENVIRONMENT VARIABLE ACCESS - NO SETTINGS IMPORT
-WATCHLIST = os.getenv('WATCHLIST', 'SPY,QQQ,IWM,TSLA,NVDA,AAPL,MSFT,GOOGL').split(',')
+# DIRECT ENVIRONMENT VARIABLE ACCESS
+WATCHLIST = os.getenv('WATCHLIST', 'SPY,QQQ,AAPL,MSFT,NVDA,TSLA').split(',')
 RESAMPLE_INTERVAL = os.getenv('RESAMPLE_INTERVAL', '15Min')
 LOOKBACK_WINDOW = int(os.getenv('LOOKBACK_WINDOW', '100'))
 PREDICTION_THRESHOLD = float(os.getenv('PREDICTION_THRESHOLD', '0.65'))
@@ -42,19 +42,22 @@ RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.02'))
 MAX_PORTFOLIO_RISK = float(os.getenv('MAX_PORTFOLIO_RISK', '0.1'))
 ENABLE_TRADING = os.getenv('ENABLE_TRADING', 'false').lower() == 'true'
 PAPER_TRADING = os.getenv('PAPER_TRADING', 'true').lower() == 'true'
+TRADING_STRATEGY = os.getenv('TRADING_STRATEGY', 'options')
+OPTIONS_EXPIRATION = os.getenv('OPTIONS_EXPIRATION', '2025-03-21')
+MAX_OPTIONS_POSITIONS = int(os.getenv('MAX_OPTIONS_POSITIONS', '5'))
 
 # Import our modules with simple error handling
 try:
     from data.data_client import DataClient
 except ImportError as e:
     logger.error(f"DataClient import error: {e}")
-    # Fallback DataClient
     class DataClient:
         def get_multiple_historical_bars(self, symbols, timeframe='15Min', limit=100):
-            logger.info(f"Would fetch data for {symbols}")
             return {symbol: None for symbol in symbols}
         def get_account_info(self):
             return {'equity': 10000, 'cash': 5000, 'buying_power': 10000, 'portfolio_value': 10000}
+        def get_detailed_option_chain(self, symbol, expiration_date=None):
+            return None
 
 try:
     from features.feature_engineer import FeatureEngineer
@@ -100,12 +103,23 @@ except ImportError as e:
             logger.info(f"Would close position: {symbol}")
             return True
 
+try:
+    from trading.options_strategy import OptionsStrategyEngine
+except ImportError as e:
+    logger.error(f"OptionsStrategyEngine import error: {e}")
+    class OptionsStrategyEngine:
+        def select_best_option(self, *args):
+            return None
+        def calculate_options_position_size(self, *args):
+            return 1
+
 # Initialize components
 data_client = DataClient()
 feature_engineer = FeatureEngineer()
 predictor = IntelligentPredictor()
 portfolio_manager = PortfolioManager()
 execution_client = ExecutionClient()
+options_strategy = OptionsStrategyEngine()
 
 def train_model_if_needed():
     """Train model if it doesn't exist"""
@@ -202,35 +216,55 @@ class IntelligentTradingBot:
                 
             # 4. Make trading decision
             if prediction == 1 and confidence >= PREDICTION_THRESHOLD:
-                self.execute_trade(symbol, engineered_data, account_info, confidence)
+                self.execute_options_trade(symbol, engineered_data, account_info, confidence)
                 
         except Exception as e:
             logger.error(f"Error analyzing {symbol}: {e}")
             
-    def execute_trade(self, symbol, data, account_info, confidence):
-        """Execute a trade based on analysis"""
+    def execute_options_trade(self, symbol, data, account_info, confidence):
+        """Execute OPTIONS trade based on analysis"""
         if not ENABLE_TRADING:
-            logger.info(f"Trading disabled. Would trade {symbol} with confidence {confidence:.2f}")
+            logger.info(f"Would place OPTIONS trade on {symbol} with confidence {confidence:.2f}")
             return
             
         try:
             current_price = data['close'].iloc[-1] if hasattr(data, 'iloc') else 100
-            stop_loss = current_price * 0.95
-            position_size = max(1, int((account_info.get('equity', 10000) * RISK_PER_TRADE) / current_price))
             
+            # Get detailed options chain
+            option_chain = data_client.get_detailed_option_chain(symbol, OPTIONS_EXPIRATION)
+            
+            if not option_chain:
+                logger.warning(f"No options chain available for {symbol}")
+                return
+                
+            # Select best option based on prediction
+            selected_option = options_strategy.select_best_option(
+                symbol, 1, confidence, option_chain, current_price
+            )
+            
+            if not selected_option:
+                logger.warning(f"No suitable option found for {symbol}")
+                return
+                
+            # Calculate position size
+            contracts = options_strategy.calculate_options_position_size(
+                account_info.get('equity', 10000), selected_option['price'], confidence
+            )
+            
+            # Place options order
             success = execution_client.place_option_order(
-                symbol=symbol,
-                quantity=position_size,
-                order_type='call',
-                strike=current_price * 1.05,
-                expiration='2025-01-17'
+                symbol=selected_option['symbol'],
+                quantity=contracts,
+                order_type=selected_option['type'],
+                strike=selected_option['strike'],
+                expiration=selected_option['expiration']
             )
                 
             if success:
-                logger.info(f"Trade executed: {position_size} calls on {symbol}")
+                logger.info(f"Options trade executed: {contracts} contracts of {selected_option['symbol']}")
                 
         except Exception as e:
-            logger.error(f"Error executing trade for {symbol}: {e}")
+            logger.error(f"Error executing options trade for {symbol}: {e}")
             
     def manage_existing_positions(self, market_data):
         """Manage risk on existing positions"""
@@ -252,7 +286,7 @@ class IntelligentTradingBot:
         while True:
             try:
                 self.run_analysis_cycle()
-                time.sleep(60)  # Shorter sleep for testing
+                time.sleep(60)
                 
             except KeyboardInterrupt:
                 logger.info("Bot stopped by user")
