@@ -65,11 +65,11 @@ class Config:
 # Import components with error handling
 try:
     from models.advanced_market_analyzer import AdvancedMarketAnalyzer
-    from data.enhanced_data_client import EnhancedDataClient
-    from trading.professional_options_engine import ProfessionalOptionsEngine
-    from trading.advanced_execution_client import AdvancedExecutionClient
-    from trading.intelligent_risk_manager import IntelligentRiskManager
-    from models.adaptive_learning_system import AdaptiveLearningSystem
+    from data.data_client import EnhancedDataClient
+    from trading.options_engine import ProfessionalOptionsEngine
+    from trading.execution_client import AdvancedExecutionClient
+    from trading.portfolio_manager import PortfolioManager as IntelligentRiskManager
+    from models.reinforcement_learner import ReinforcementLearner as AdaptiveLearningSystem
     
     COMPONENTS_LOADED = True
     logger.info("All components loaded successfully")
