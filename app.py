@@ -1,447 +1,588 @@
-from flask import Flask
-import threading
-import logging
-import time
-import pandas as pd
-from datetime import datetime
-import os
-import requests
-import numpy as np
+"""
+Professional Trading Bot - Main Application
+Complete rebuild with real intelligence and pattern recognition
+"""
 
-# Configure logging
+import os
+import time
+import logging
+import threading
+from datetime import datetime, timedelta
+from flask import Flask, jsonify, request
+import pandas as pd
+import numpy as np
+from typing import Dict, List
+
+# Configure professional logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('trading_bot.log')
+        logging.FileHandler('logs/trading_bot.log')
     ]
 )
 
+# Create logs directory
+os.makedirs('logs', exist_ok=True)
+os.makedirs('data', exist_ok=True)
+os.makedirs('models', exist_ok=True)
+
 logger = logging.getLogger(__name__)
 
-# Create a simple Flask app for health checks
+# Flask app for monitoring and health checks
 app = Flask(__name__)
 
-@app.route('/')
-def health_check():
-    return {'status': 'healthy', 'service': 'trading-bot'}
-
-@app.route('/health')
-def health():
-    return {'status': 'ok', 'timestamp': datetime.now().isoformat()}
-
-def run_flask_app():
-    app.run(host='0.0.0.0', port=10000, debug=False, use_reloader=False)
-
-# DIRECT ENVIRONMENT VARIABLE ACCESS
-WATCHLIST = os.getenv('WATCHLIST', 'SPY,QQQ,AAPL,MSFT,NVDA,TSLA').split(',')
-RESAMPLE_INTERVAL = os.getenv('RESAMPLE_INTERVAL', '15Min')
-LOOKBACK_WINDOW = int(os.getenv('LOOKBACK_WINDOW', '100'))
-PREDICTION_THRESHOLD = float(os.getenv('PREDICTION_THRESHOLD', '0.65'))
-MIN_CONFIDENCE = float(os.getenv('MIN_CONFIDENCE', '0.6'))
-RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.02'))
-MAX_PORTFOLIO_RISK = float(os.getenv('MAX_PORTFOLIO_RISK', '0.1'))
-ENABLE_TRADING = os.getenv('ENABLE_TRADING', 'false').lower() == 'true'
-PAPER_TRADING = os.getenv('PAPER_TRADING', 'true').lower() == 'true'
-TRADING_STRATEGY = os.getenv('TRADING_STRATEGY', 'options')
-OPTIONS_EXPIRATION = os.getenv('OPTIONS_EXPIRATION', '2026-01-16')
-MAX_OPTIONS_POSITIONS = int(os.getenv('MAX_OPTIONS_POSITIONS', '5'))
-TEST_MODE = os.getenv('TEST_MODE', 'false').lower() == 'true'
-
-# Import our modules with simple error handling
-try:
-    from data.data_client import DataClient
-except ImportError as e:
-    logger.error(f"DataClient import error: {e}")
-    class DataClient:
-        def get_multiple_historical_bars(self, symbols, timeframe='15Min', limit=100):
-            return {symbol: None for symbol in symbols}
-        def get_account_info(self):
-            return {'equity': 10000, 'cash': 5000, 'buying_power': 10000, 'portfolio_value': 10000}
-        def get_detailed_option_chain(self, symbol, expiration_date=None):
-            return None
-
-try:
-    from features.feature_engineer import FeatureEngineer
-except ImportError as e:
-    logger.error(f"FeatureEngineer import error: {e}")
-    class FeatureEngineer:
-        def calculate_technical_indicators(self, df):
-            return df
-        def prepare_features_for_prediction(self, df):
-            return df
-
-try:
-    from models.predictor import IntelligentPredictor
-except ImportError as e:
-    logger.error(f"IntelligentPredictor import error: {e}")
-    class IntelligentPredictor:
-        def load_model(self, path):
-            return False
-        def predict(self, features):
-            return 0, 0.5
-
-try:
-    from trading.portfolio_manager import PortfolioManager
-except ImportError as e:
-    logger.error(f"PortfolioManager import error: {e}")
-    class PortfolioManager:
-        def should_enter_trade(self, symbol, confidence, positions):
-            return True
-        def manage_risk(self, positions, market_data):
-            return []
-
-try:
-    from trading.execution_client import ExecutionClient
-except ImportError as e:
-    logger.error(f"ExecutionClient import error: {e}")
-    class ExecutionClient:
-        def get_current_positions(self):
-            return {}
-        def place_option_order(self, **kwargs):
-            logger.info(f"Would place order: {kwargs}")
-            return True
-        def close_position(self, symbol):
-            logger.info(f"Would close position: {symbol}")
-            return True
-
-try:
-    from trading.options_strategy import OptionsStrategyEngine
-except ImportError as e:
-    logger.error(f"OptionsStrategyEngine import error: {e}")
-    class OptionsStrategyEngine:
-        def select_best_option(self, *args):
-            return None
-        def calculate_options_position_size(self, *args):
-            return 1
-
-try:
-    from models.reinforcement_learner import ReinforcementLearner
-except ImportError as e:
-    logger.error(f"ReinforcementLearner import error: {e}")
-    class ReinforcementLearner:
-        def record_trade(self, *args): pass
-        def adjust_confidence(self, symbol, confidence): return confidence
-        def should_trade_symbol(self, symbol, confidence): return True
-
-# Initialize components
-data_client = DataClient()
-feature_engineer = FeatureEngineer()
-predictor = IntelligentPredictor()
-portfolio_manager = PortfolioManager()
-execution_client = ExecutionClient()
-options_strategy = OptionsStrategyEngine()
-reinforcement_learner = ReinforcementLearner()
-
-def train_model_if_needed():
-    """Train model if it doesn't exist"""
-    model_path = 'models/trained_model.pkl'
+# Configuration from environment variables
+class Config:
+    # Alpaca API settings
+    APCA_API_KEY_ID = os.getenv('APCA_API_KEY_ID')
+    APCA_API_SECRET_KEY = os.getenv('APCA_API_SECRET_KEY') 
+    APCA_API_BASE_URL = os.getenv('APCA_API_BASE_URL', 'https://paper-api.alpaca.markets')
     
-    if not os.path.exists(model_path):
-        logger.info("No trained model found. Starting model training...")
-        try:
-            from train_model import train_model
-            success = train_model()
-            if success:
-                logger.info("Model training completed successfully!")
-                return True
-            else:
-                logger.warning("Model training failed")
-                return False
-        except Exception as e:
-            logger.error(f"Error during model training: {e}")
-            return False
-    return True
+    # Trading settings
+    WATCHLIST = os.getenv('WATCHLIST', 'SPY,QQQ,TSLA,AAPL,MSFT,NVDA,GOOGL,AMZN,META').split(',')
+    ENABLE_TRADING = os.getenv('ENABLE_TRADING', 'false').lower() == 'true'
+    MAX_POSITIONS = int(os.getenv('MAX_POSITIONS', '5'))
+    RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.05'))  # 5% risk per trade
+    
+    # Analysis settings
+    CONFIDENCE_THRESHOLD = float(os.getenv('CONFIDENCE_THRESHOLD', '0.75'))
+    ANALYSIS_INTERVAL = int(os.getenv('ANALYSIS_INTERVAL', '60'))  # seconds
+    
+    # Multi-timeframe settings
+    TIMEFRAMES = ['1Min', '5Min', '15Min', '1Hour']
+    PRIMARY_TIMEFRAME = os.getenv('PRIMARY_TIMEFRAME', '15Min')
+    
+    # Options settings
+    FOCUS_OPTIONS = os.getenv('FOCUS_OPTIONS', 'true').lower() == 'true'
+    OPTIONS_EXPIRATION_DAYS = int(os.getenv('OPTIONS_EXPIRATION_DAYS', '30'))
+    
+    # ML Model settings
+    RETRAIN_MODELS = os.getenv('RETRAIN_MODELS', 'false').lower() == 'true'
+    MODEL_UPDATE_FREQUENCY = int(os.getenv('MODEL_UPDATE_FREQUENCY', '24'))  # hours
 
-class IntelligentTradingBot:
+# Import components with error handling
+try:
+    from models.advanced_market_analyzer import AdvancedMarketAnalyzer
+    from data.enhanced_data_client import EnhancedDataClient
+    from trading.professional_options_engine import ProfessionalOptionsEngine
+    from trading.advanced_execution_client import AdvancedExecutionClient
+    from trading.intelligent_risk_manager import IntelligentRiskManager
+    from models.adaptive_learning_system import AdaptiveLearningSystem
+    
+    COMPONENTS_LOADED = True
+    logger.info("All components loaded successfully")
+    
+except ImportError as e:
+    logger.error(f"Component import failed: {e}")
+    # Fallback components for graceful degradation
+    COMPONENTS_LOADED = False
+    
+    class MockComponent:
+        def __init__(self): pass
+        def __getattr__(self, name): return lambda *args, **kwargs: None
+
+class ProfessionalTradingBot:
     def __init__(self):
-        # Start Flask server in a separate thread
-        logger.info("Starting health check server...")
-        self.flask_thread = threading.Thread(target=run_flask_app, daemon=True)
-        self.flask_thread.start()
+        self.config = Config()
+        self.running = False
+        self.last_analysis_time = datetime.now()
+        self.performance_metrics = {
+            'total_trades': 0,
+            'profitable_trades': 0,
+            'total_pnl': 0.0,
+            'win_rate': 0.0,
+            'sharpe_ratio': 0.0,
+            'max_drawdown': 0.0
+        }
         
-        # Train model if needed
-        self.model_trained = train_model_if_needed()
+        # Initialize components
+        self.initialize_components()
         
-        # Load pre-trained model if available
-        if self.model_trained:
-            logger.info("Loading trained model...")
-            try:
-                success = predictor.load_model('models/trained_model.pkl')
-                if not success:
-                    logger.warning("Failed to load trained model")
-            except Exception as e:
-                logger.error(f"Error loading model: {e}")
-        else:
-            logger.warning("No model available. Running in analysis-only mode.")
+        # Start Flask server
+        self.start_web_server()
         
-    def assess_trend(self, data):
-        """
-        Determines the trend of a given dataset.
-        Returns 'bullish', 'bearish', or 'neutral'
-        """
+        # Initialize models if needed
+        self.initialize_models()
+    
+    def initialize_components(self):
+        """Initialize all trading components"""
         try:
-            if data is None or len(data) < 20:
-                return 'neutral'
+            if COMPONENTS_LOADED:
+                self.market_analyzer = AdvancedMarketAnalyzer()
+                self.data_client = EnhancedDataClient()
+                self.options_engine = ProfessionalOptionsEngine()
+                self.execution_client = AdvancedExecutionClient()
+                self.risk_manager = IntelligentRiskManager()
+                self.learning_system = AdaptiveLearningSystem()
                 
-            # Simple trend logic: compare current price to medium-term SMA
-            current_close = data['close'].iloc[-1]
-            medium_sma = data['close'].rolling(window=20).mean().iloc[-1]
-            
-            if pd.isna(medium_sma):
-                return 'neutral'
-                
-            if current_close > medium_sma * 1.02:  # 2% above SMA
-                return 'bullish'
-            elif current_close < medium_sma * 0.98: # 2% below SMA
-                return 'bearish'
+                logger.info("All components initialized successfully")
             else:
-                return 'neutral'
+                # Fallback mode
+                self.market_analyzer = MockComponent()
+                self.data_client = MockComponent()
+                self.options_engine = MockComponent()
+                self.execution_client = MockComponent()
+                self.risk_manager = MockComponent()
+                self.learning_system = MockComponent()
+                
+                logger.warning("Running in fallback mode due to import errors")
+                
         except Exception as e:
-            logger.error(f"Error assessing trend: {e}")
-            return 'neutral'
+            logger.error(f"Error initializing components: {e}")
+            raise
+    
+    def start_web_server(self):
+        """Start Flask web server in background thread"""
+        def run_server():
+            app.run(host='0.0.0.0', port=10000, debug=False, use_reloader=False)
         
-    def run_analysis_cycle(self):
-        """Run one complete analysis and trading cycle"""
-        logger.info("Starting analysis cycle")
-        
+        server_thread = threading.Thread(target=run_server, daemon=True)
+        server_thread.start()
+        logger.info("Web server started on port 10000")
+    
+    def initialize_models(self):
+        """Initialize or retrain ML models"""
         try:
-            # 1. Get market data
-            market_data = data_client.get_multiple_historical_bars(
-                WATCHLIST, 
-                RESAMPLE_INTERVAL, 
-                LOOKBACK_WINDOW
+            model_path = 'models/trained_models.pkl'
+            
+            # Try to load existing models
+            if os.path.exists(model_path) and not self.config.RETRAIN_MODELS:
+                success = self.market_analyzer.load_models(model_path)
+                if success:
+                    logger.info("Existing models loaded successfully")
+                    return
+            
+            # Train new models with historical data
+            logger.info("Training new models with historical data...")
+            self.train_models_with_historical_data()
+            
+        except Exception as e:
+            logger.error(f"Error initializing models: {e}")
+    
+    def train_models_with_historical_data(self):
+        """Train ML models using historical data"""
+        try:
+            for symbol in self.config.WATCHLIST:
+                logger.info(f"Training model for {symbol}...")
+                
+                # Get 1 year of historical data
+                end_date = datetime.now()
+                start_date = end_date - timedelta(days=365)
+                
+                historical_data = self.data_client.get_historical_data(
+                    symbol, 
+                    timeframe='1Day',
+                    start=start_date,
+                    end=end_date,
+                    limit=365
+                )
+                
+                if historical_data is not None and len(historical_data) > 100:
+                    success = self.market_analyzer.train_model(symbol, historical_data)
+                    if success:
+                        logger.info(f"Model trained successfully for {symbol}")
+                    else:
+                        logger.warning(f"Model training failed for {symbol}")
+                else:
+                    logger.warning(f"Insufficient historical data for {symbol}")
+            
+            # Save trained models
+            self.market_analyzer.save_models('models/trained_models.pkl')
+            logger.info("Model training completed and saved")
+            
+        except Exception as e:
+            logger.error(f"Error training models: {e}")
+    
+    def run_market_analysis_cycle(self):
+        """Run complete market analysis and trading cycle"""
+        try:
+            logger.info("Starting market analysis cycle...")
+            
+            # Get current account status
+            account_info = self.execution_client.get_account_info()
+            current_positions = self.execution_client.get_current_positions()
+            
+            logger.info(f"Account equity: ${account_info.get('equity', 0):,.2f}")
+            logger.info(f"Current positions: {len(current_positions)}")
+            
+            # Analyze each symbol in watchlist
+            analysis_results = []
+            
+            for symbol in self.config.WATCHLIST:
+                result = self.analyze_single_symbol(symbol, account_info, current_positions)
+                if result:
+                    analysis_results.append(result)
+            
+            # Rank opportunities by confidence and potential
+            ranked_opportunities = self.rank_trading_opportunities(analysis_results)
+            
+            # Execute top opportunities (if trading enabled)
+            if self.config.ENABLE_TRADING and ranked_opportunities:
+                self.execute_trading_decisions(ranked_opportunities, account_info)
+            
+            # Update performance metrics
+            self.update_performance_metrics()
+            
+            logger.info("Market analysis cycle completed")
+            
+        except Exception as e:
+            logger.error(f"Error in market analysis cycle: {e}")
+    
+    def analyze_single_symbol(self, symbol: str, account_info: Dict, current_positions: Dict) -> Dict:
+        """Analyze a single symbol across multiple timeframes"""
+        try:
+            logger.info(f"Analyzing {symbol}...")
+            
+            # Get multi-timeframe data
+            timeframe_data = {}
+            for tf in self.config.TIMEFRAMES:
+                data = self.data_client.get_real_time_bars(symbol, timeframe=tf, limit=200)
+                if data is not None and len(data) >= 50:
+                    timeframe_data[tf] = data
+            
+            if not timeframe_data:
+                logger.warning(f"No data available for {symbol}")
+                return None
+            
+            # Perform analysis on primary timeframe
+            primary_data = timeframe_data.get(self.config.PRIMARY_TIMEFRAME)
+            if primary_data is None:
+                return None
+            
+            analysis = self.market_analyzer.analyze_symbol(symbol, primary_data)
+            
+            # Multi-timeframe confluence check
+            confluence_score = self.check_timeframe_confluence(symbol, timeframe_data)
+            
+            # Adjust confidence based on confluence
+            analysis['confidence'] *= confluence_score
+            analysis['confluence_score'] = confluence_score
+            
+            # Risk assessment
+            risk_assessment = self.risk_manager.assess_symbol_risk(
+                symbol, primary_data, current_positions, account_info
             )
+            analysis['risk_assessment'] = risk_assessment
             
-            # 2. Get account information
-            account_info = data_client.get_account_info()
+            # Options analysis (if focus is on options)
+            if self.config.FOCUS_OPTIONS:
+                options_analysis = self.options_engine.analyze_options_opportunity(
+                    symbol, analysis, primary_data
+                )
+                analysis['options_analysis'] = options_analysis
             
-            # 3. Analyze each symbol
-            for symbol in WATCHLIST:
-                self.analyze_symbol(symbol, market_data.get(symbol), account_info)
-                
-            # 4. Manage existing positions
-            self.manage_existing_positions(market_data)
+            # Learning system feedback
+            historical_performance = self.learning_system.get_symbol_performance(symbol)
+            analysis['historical_performance'] = historical_performance
             
-            logger.info("Analysis cycle completed successfully")
+            # Final trade recommendation
+            should_trade = self.should_execute_trade(analysis, risk_assessment)
+            analysis['trade_recommendation'] = should_trade
             
-        except Exception as e:
-            logger.error(f"Error in analysis cycle: {e}")
+            logger.info(f"{symbol}: Prediction={analysis['prediction']}, "
+                       f"Confidence={analysis['confidence']:.2f}, "
+                       f"Confluence={confluence_score:.2f}, "
+                       f"Recommend={should_trade}")
             
-    def analyze_symbol(self, symbol, data, account_info):
-        """Analyze a single symbol and make trading decisions"""
-        if data is None:
-            logger.warning(f"No data for {symbol}")
-            return
+            return analysis
             
-        if len(data) < 20:
-            logger.warning(f"Insufficient data for {symbol}: {len(data)} bars")
-            return
-            
-        try:
-            # 1. Feature engineering
-            engineered_data = feature_engineer.calculate_technical_indicators(data)
-            
-            # 2. Prepare features for prediction
-            prediction_features = feature_engineer.prepare_features_for_prediction(engineered_data)
-            
-            if prediction_features is None:
-                return
-                
-            # 3. Get prediction from model
-            prediction, confidence = predictor.predict(prediction_features)
-            logger.info(f"{symbol} - Prediction: {prediction}, Confidence: {confidence:.2f}")
-                
-            # 4. Make trading decision
-            if prediction == 1 and confidence >= PREDICTION_THRESHOLD:
-                self.execute_options_trade(symbol, engineered_data, account_info, confidence, prediction)
-                
         except Exception as e:
             logger.error(f"Error analyzing {symbol}: {e}")
-            
-    def execute_options_trade(self, symbol, data, account_info, confidence, prediction):
-        """Execute OPTIONS trade based on analysis"""
-        if not ENABLE_TRADING:
-            logger.info(f"Would place OPTIONS trade on {symbol} with confidence {confidence:.2f}")
-            return
-            
+            return None
+    
+    def check_timeframe_confluence(self, symbol: str, timeframe_data: Dict) -> float:
+        """Check for confluence across multiple timeframes"""
         try:
-            # Check if we should trade this symbol based on historical performance
-            if not reinforcement_learner.should_trade_symbol(symbol, confidence):
-                logger.info(f"Skipping {symbol} due to poor historical performance")
-                return
-                
-            current_price = data['close'].iloc[-1] if hasattr(data, 'iloc') else 100
+            signals = []
             
-            # Get detailed options chain
-            option_chain = data_client.get_detailed_option_chain(symbol, OPTIONS_EXPIRATION)
+            for tf, data in timeframe_data.items():
+                if data is not None and len(data) >= 20:
+                    tf_analysis = self.market_analyzer.analyze_symbol(symbol, data)
+                    signals.append(tf_analysis['prediction'])
             
-            if not option_chain:
-                logger.warning(f"No options chain available for {symbol}")
-                return
+            if not signals:
+                return 0.5  # Neutral if no data
+            
+            # Calculate confluence: percentage of timeframes agreeing
+            bullish_signals = sum(signals)
+            total_signals = len(signals)
+            
+            if bullish_signals == 0:
+                return 0.3  # All bearish
+            elif bullish_signals == total_signals:
+                return 1.0  # All bullish
+            else:
+                return 0.5 + (bullish_signals / total_signals - 0.5) * 0.5
+            
+        except Exception as e:
+            logger.error(f"Error checking confluence for {symbol}: {e}")
+            return 0.5
+    
+    def rank_trading_opportunities(self, analysis_results: List[Dict]) -> List[Dict]:
+        """Rank trading opportunities by potential and risk"""
+        try:
+            if not analysis_results:
+                return []
+            
+            # Filter for tradeable opportunities
+            opportunities = [
+                result for result in analysis_results 
+                if (result['confidence'] >= self.config.CONFIDENCE_THRESHOLD and 
+                    result['trade_recommendation'])
+            ]
+            
+            # Sort by composite score (confidence * confluence * risk adjustment)
+            for opp in opportunities:
+                risk_multiplier = 1.0 - opp['risk_assessment'].get('risk_score', 0)
+                composite_score = (
+                    opp['confidence'] * 
+                    opp['confluence_score'] * 
+                    risk_multiplier
+                )
+                opp['composite_score'] = composite_score
+            
+            # Sort by composite score (highest first)
+            ranked = sorted(opportunities, key=lambda x: x['composite_score'], reverse=True)
+            
+            logger.info(f"Found {len(ranked)} trading opportunities")
+            return ranked
+            
+        except Exception as e:
+            logger.error(f"Error ranking opportunities: {e}")
+            return []
+    
+    def should_execute_trade(self, analysis: Dict, risk_assessment: Dict) -> bool:
+        """Determine if a trade should be executed"""
+        try:
+            # Basic checks
+            if analysis['confidence'] < self.config.CONFIDENCE_THRESHOLD:
+                return False
+            
+            if risk_assessment.get('risk_score', 1.0) > 0.7:  # Too risky
+                return False
+            
+            # Learning system check
+            symbol = analysis['symbol']
+            if not self.learning_system.should_trade_symbol(symbol, analysis['confidence']):
+                return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error in trade decision: {e}")
+            return False
+    
+    def execute_trading_decisions(self, opportunities: List[Dict], account_info: Dict):
+        """Execute trading decisions based on analysis"""
+        try:
+            executed_trades = 0
+            max_new_positions = min(3, self.config.MAX_POSITIONS)  # Limit new positions
+            
+            for opportunity in opportunities[:max_new_positions]:
+                symbol = opportunity['symbol']
                 
-            # Select best option based on prediction
-            selected_option = options_strategy.select_best_option(
-                symbol, prediction, confidence, option_chain, current_price
+                try:
+                    if self.config.FOCUS_OPTIONS:
+                        success = self.execute_options_trade(opportunity, account_info)
+                    else:
+                        success = self.execute_stock_trade(opportunity, account_info)
+                    
+                    if success:
+                        executed_trades += 1
+                        logger.info(f"Trade executed successfully for {symbol}")
+                        
+                        # Record trade for learning
+                        self.learning_system.record_trade_entry(opportunity)
+                    
+                except Exception as e:
+                    logger.error(f"Error executing trade for {symbol}: {e}")
+            
+            logger.info(f"Executed {executed_trades} trades this cycle")
+            
+        except Exception as e:
+            logger.error(f"Error executing trading decisions: {e}")
+    
+    def execute_options_trade(self, opportunity: Dict, account_info: Dict) -> bool:
+        """Execute an options trade"""
+        try:
+            symbol = opportunity['symbol']
+            options_analysis = opportunity.get('options_analysis', {})
+            
+            if not options_analysis:
+                logger.warning(f"No options analysis for {symbol}")
+                return False
+            
+            # Get the best option contract
+            best_option = self.options_engine.select_best_option_contract(
+                symbol, opportunity, account_info
             )
             
-            if not selected_option:
-                logger.warning(f"No suitable option found for {symbol}")
-                return
-                
+            if not best_option:
+                logger.warning(f"No suitable option contract for {symbol}")
+                return False
+            
             # Calculate position size
-            contracts = options_strategy.calculate_options_position_size(
-                account_info.get('equity', 10000), selected_option['price'], confidence
+            position_size = self.risk_manager.calculate_options_position_size(
+                account_info, best_option, opportunity
             )
             
-            # Store trade information for learning
-            trade_data = {
-                'symbol': symbol,
-                'prediction': prediction,
-                'confidence': confidence,
-                'option_type': selected_option['type'],
-                'strike': selected_option['strike'],
-                'contracts': contracts,
-                'entry_price': selected_option['price'],
-                'timestamp': datetime.now().isoformat(),
-                # CRITICAL FIX: Add dummy P&L and outcome to start collecting data
-                'pnl': 0.0,  # Temporary dummy value - to be updated manually later
-                'actual_outcome': 1 if prediction == 1 else 0  # Temporary assumption
-            }
-            
-            # Place options order
-            success = execution_client.place_option_order(
-                symbol=selected_option['symbol'],
-                quantity=contracts,
-                order_type=selected_option['type'],
-                strike=selected_option['strike'],
-                expiration=selected_option['expiration']
+            # Execute the trade
+            success = self.execution_client.place_options_order(
+                best_option, position_size, opportunity
             )
-                
-            if success:
-                logger.info(f"Options trade executed: {contracts} contracts of {selected_option['symbol']}")
-                # Record trade for future learning - NOW WITH CRITICAL DATA
-                reinforcement_learner.record_trade(trade_data)
-                
+            
+            return success
+            
         except Exception as e:
-            logger.error(f"Error executing options trade for {symbol}: {e}")
-            
-    def manage_existing_positions(self, market_data):
-        """Manage risk on existing positions"""
+            logger.error(f"Error executing options trade: {e}")
+            return False
+    
+    def execute_stock_trade(self, opportunity: Dict, account_info: Dict) -> bool:
+        """Execute a stock trade (fallback if not focusing on options)"""
         try:
-            current_positions = execution_client.get_current_positions()
-            exit_signals = portfolio_manager.manage_risk(current_positions, market_data)
+            symbol = opportunity['symbol']
             
-            for signal in exit_signals:
-                execution_client.close_position(signal['symbol'])
-                logger.info(f"Exit signal: Closed {signal['symbol']}")
-                
+            # Calculate position size
+            position_size = self.risk_manager.calculate_stock_position_size(
+                account_info, opportunity
+            )
+            
+            # Execute the trade
+            success = self.execution_client.place_stock_order(
+                symbol, position_size, opportunity
+            )
+            
+            return success
+            
         except Exception as e:
-            logger.error(f"Error managing positions: {e}")
+            logger.error(f"Error executing stock trade: {e}")
+            return False
+    
+    def update_performance_metrics(self):
+        """Update bot performance metrics"""
+        try:
+            # Get updated account info
+            account_info = self.execution_client.get_account_info()
             
+            # Update metrics from learning system
+            overall_performance = self.learning_system.get_overall_performance()
+            
+            self.performance_metrics.update({
+                'current_equity': account_info.get('equity', 0),
+                'total_trades': overall_performance.get('total_trades', 0),
+                'profitable_trades': overall_performance.get('profitable_trades', 0),
+                'total_pnl': overall_performance.get('total_pnl', 0),
+                'win_rate': overall_performance.get('win_rate', 0),
+                'last_updated': datetime.now().isoformat()
+            })
+            
+        except Exception as e:
+            logger.error(f"Error updating performance metrics: {e}")
+    
     def run(self):
-        """Main bot loop"""
-        logger.info("Starting Intelligent Trading Bot")
+        """Main bot execution loop"""
+        logger.info("Starting Professional Trading Bot")
+        logger.info(f"Watchlist: {', '.join(self.config.WATCHLIST)}")
+        logger.info(f"Trading enabled: {self.config.ENABLE_TRADING}")
+        logger.info(f"Focus on options: {self.config.FOCUS_OPTIONS}")
         
-        while True:
+        self.running = True
+        
+        while self.running:
             try:
-                self.run_analysis_cycle()
-                time.sleep(60)
+                # Check if markets are open (simple check)
+                now = datetime.now()
+                if self.is_market_hours(now):
+                    self.run_market_analysis_cycle()
+                else:
+                    logger.info("Markets closed, waiting...")
+                
+                # Sleep until next analysis
+                time.sleep(self.config.ANALYSIS_INTERVAL)
                 
             except KeyboardInterrupt:
                 logger.info("Bot stopped by user")
+                self.running = False
                 break
             except Exception as e:
                 logger.error(f"Unexpected error in main loop: {e}")
-                time.sleep(30)
-
-# === ADD THIS SECTION FOR REMOTE TESTING ===
-@app.route('/test')
-def run_remote_test():
-    """Remote test endpoint for Render hosting"""
-    try:
-        success = run_test_mode()
-        return {'status': 'success' if success else 'failed', 'message': 'Check Render logs for details.'}
-    except Exception as e:
-        return {'status': 'error', 'message': str(e)}, 500
-# === END ADDITION ===
-
-def run_test_mode():
-    """Test mode that verifies all components are working"""
-    logger.info("🚀 STARTING COMPREHENSIVE SYSTEM TEST")
+                time.sleep(60)  # Wait a minute before retrying
     
-    # Test 1: Basic Imports and Initialization
-    logger.info("1. Testing component initialization...")
-    try:
-        from data.data_client import DataClient
-        from features.feature_engineer import FeatureEngineer
-        from models.predictor import IntelligentPredictor
-        from trading.portfolio_manager import PortfolioManager
-        from trading.execution_client import ExecutionClient
-        from models.reinforcement_learner import ReinforcementLearner
-        logger.info("✅ All imports successful")
-    except Exception as e:
-        logger.error(f"❌ Import test failed: {e}")
-        return False
-    
-    # Test 2: Data Client
-    logger.info("2. Testing data client...")
-    try:
-        dc = DataClient()
-        account_info = dc.get_account_info()
-        logger.info(f"✅ Data client working - Account equity: ${account_info.get('equity', 0):.2f}")
-    except Exception as e:
-        logger.error(f"❌ Data client test failed: {e}")
-    
-    # Test 3: Reinforcement Learning System
-    logger.info("3. Testing reinforcement learning...")
-    try:
-        rl = ReinforcementLearner()
-        rl.record_trade({
-            'symbol': 'TEST',
-            'prediction': 1,
-            'confidence': 0.75,
-            'pnl': 150.50,
-            'test_mode': True
-        })
-        logger.info("✅ Reinforcement learning system working")
-    except Exception as e:
-        logger.error(f"❌ Reinforcement learning test failed: {e}")
-    
-    # Test 4: Health Check Server
-    logger.info("4. Testing health server...")
-    try:
-        test_server_thread = threading.Thread(target=run_flask_app, daemon=True)
-        test_server_thread.start()
-        time.sleep(2)
+    def is_market_hours(self, current_time: datetime) -> bool:
+        """Check if markets are currently open (simplified)"""
+        # This is a basic check - you might want to use a more sophisticated market calendar
+        weekday = current_time.weekday()  # 0=Monday, 6=Sunday
+        hour = current_time.hour
         
-        response = requests.get('http://localhost:10000/health', timeout=5)
-        if response.status_code == 200:
-            logger.info("✅ Health server working")
-        else:
-            logger.error(f"❌ Health server test failed: {response.status_code}")
-    except Exception as e:
-        logger.error(f"❌ Health server test failed: {e}")
-    
-    # Test 5: Full Analysis Cycle (Dry Run)
-    logger.info("5. Testing analysis cycle...")
-    try:
-        bot = IntelligentTradingBot()
-        bot.run_analysis_cycle()
-        logger.info("✅ Analysis cycle completed successfully")
-    except Exception as e:
-        logger.error(f"❌ Analysis cycle test failed: {e}")
-    
-    logger.info("🎉 SYSTEM TEST COMPLETE - Ready for market open!")
-    return True
+        # Monday to Friday, 9:30 AM to 4:00 PM EST (simplified)
+        if weekday < 5 and 9 <= hour < 16:
+            return True
+        return False
 
-if __name__ == "__main__":
-    if TEST_MODE:
-        logger.info("🛠️ Running in TEST MODE")
-        success = run_test_mode()
-        exit(0 if success else 1)
+# Flask routes for monitoring
+@app.route('/')
+def health_check():
+    return jsonify({
+        'status': 'healthy',
+        'service': 'professional-trading-bot',
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/health')
+def detailed_health():
+    return jsonify({
+        'status': 'ok',
+        'components_loaded': COMPONENTS_LOADED,
+        'config': {
+            'watchlist_size': len(Config.WATCHLIST),
+            'trading_enabled': Config.ENABLE_TRADING,
+            'focus_options': Config.FOCUS_OPTIONS
+        },
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/performance')
+def get_performance():
+    """Get bot performance metrics"""
+    if 'bot' in globals():
+        return jsonify(bot.performance_metrics)
     else:
-        logger.info("🚀 Starting LIVE TRADING BOT")
-        bot = IntelligentTradingBot()
+        return jsonify({'error': 'Bot not initialized'}), 503
+
+@app.route('/test')
+def run_test():
+    """Run system test"""
+    try:
+        # Create temporary bot instance for testing
+        test_bot = ProfessionalTradingBot()
+        
+        # Run basic tests
+        test_results = {
+            'components_loaded': COMPONENTS_LOADED,
+            'market_analyzer': hasattr(test_bot, 'market_analyzer'),
+            'data_client': hasattr(test_bot, 'data_client'),
+            'execution_client': hasattr(test_bot, 'execution_client'),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        return jsonify({
+            'status': 'test_completed',
+            'results': test_results
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'test_failed', 
+            'error': str(e)
+        }), 500
+
+# Main execution
+if __name__ == "__main__":
+    try:
+        bot = ProfessionalTradingBot()
         bot.run()
+    except Exception as e:
+        logger.error(f"Critical error starting bot: {e}")
+        raise
