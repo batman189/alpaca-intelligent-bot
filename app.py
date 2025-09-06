@@ -88,10 +88,12 @@ try:
 except ImportError as e:
     logger.error(f"PortfolioManager import error: {e}")
     class PortfolioManager:
-        def should_enter_trade(self, symbol, confidence, positions):
+        def should_enter_trade(self, symbol, confidence, positions, day_trade_count):
             return True
         def manage_risk(self, positions, market_data):
             return []
+        def check_pdt_limits(self, day_trade_count):
+            return True
 
 try:
     from trading.execution_client import ExecutionClient
@@ -106,6 +108,8 @@ except ImportError as e:
         def close_position(self, symbol):
             logger.info(f"Would close position: {symbol}")
             return True
+        def get_day_trade_count(self):
+            return 0
 
 try:
     from trading.options_strategy import OptionsStrategyEngine
@@ -232,9 +236,13 @@ class IntelligentTradingBot:
             # 2. Get account information
             account_info = data_client.get_account_info()
             
+            # 3. Get current positions and day trade count
+            current_positions = execution_client.get_current_positions()
+            day_trade_count = execution_client.get_day_trade_count()
+            
             # 3. Analyze each symbol
             for symbol in WATCHLIST:
-                self.analyze_symbol(symbol, market_data.get(symbol), account_info)
+                self.analyze_symbol(symbol, market_data.get(symbol), account_info, current_positions, day_trade_count)
                 
             # 4. Manage existing positions
             self.manage_existing_positions(market_data)
@@ -244,7 +252,7 @@ class IntelligentTradingBot:
         except Exception as e:
             logger.error(f"Error in analysis cycle: {e}")
             
-    def analyze_symbol(self, symbol, data, account_info):
+    def analyze_symbol(self, symbol, data, account_info, current_positions, day_trade_count):
         """Analyze a single symbol and make trading decisions"""
         if data is None:
             logger.warning(f"No data for {symbol}")
@@ -302,7 +310,6 @@ class IntelligentTradingBot:
                     # For counter-trend, require higher confidence
                     if confidence < 0.75:
                         logger.info(f"Confidence {confidence:.2f} too low for counter-trend trade. Skipping.")
-                        # Log missed opportunity
                         self.log_missed_opportunity(symbol, confidence, "counter_trend_low_confidence")
                         return
                         
@@ -314,7 +321,12 @@ class IntelligentTradingBot:
                     
             # 5. Make trading decision (pass context for potential use in execution)
             if prediction == 1 and confidence >= PREDICTION_THRESHOLD:
-                self.execute_options_trade(symbol, engineered_data, account_info, confidence, prediction, trade_context)
+                # Check PDT limits before executing
+                if portfolio_manager.check_pdt_limits(day_trade_count):
+                    self.execute_options_trade(symbol, engineered_data, account_info, confidence, prediction, trade_context, current_positions, day_trade_count)
+                else:
+                    logger.info(f"Skipping {symbol} - PDT limit reached ({day_trade_count}/3)")
+                    self.log_missed_opportunity(symbol, confidence, "pdt_limit_reached")
             else:
                 # Log why the trade was not taken
                 if prediction == 1 and confidence < PREDICTION_THRESHOLD:
@@ -335,7 +347,7 @@ class IntelligentTradingBot:
         except Exception as e:
             logger.error(f"Failed to log missed opportunity: {e}")
             
-    def execute_options_trade(self, symbol, data, account_info, confidence, prediction, trade_context="standard"):
+    def execute_options_trade(self, symbol, data, account_info, confidence, prediction, trade_context, current_positions, day_trade_count):
         """Execute OPTIONS trade based on analysis"""
         if not ENABLE_TRADING:
             logger.info(f"Would place OPTIONS trade on {symbol} with confidence {confidence:.2f} [{trade_context}]")
@@ -346,6 +358,12 @@ class IntelligentTradingBot:
             if not reinforcement_learner.should_trade_symbol(symbol, confidence):
                 logger.info(f"Skipping {symbol} due to poor historical performance")
                 self.log_missed_opportunity(symbol, confidence, "poor_historical_performance")
+                return
+                
+            # Check portfolio manager for additional restrictions
+            if not portfolio_manager.should_enter_trade(symbol, confidence, current_positions, day_trade_count):
+                logger.info(f"Portfolio manager rejected {symbol} trade")
+                self.log_missed_opportunity(symbol, confidence, "portfolio_manager_rejection")
                 return
                 
             current_price = data['close'].iloc[-1] if hasattr(data, 'iloc') else 100
@@ -425,11 +443,12 @@ class IntelligentTradingBot:
             exit_signals = portfolio_manager.manage_risk(current_positions, market_data)
             
             for signal in exit_signals:
-                execution_client.close_position(signal['symbol'])
-                logger.info(f"Exit signal: Closed {signal['symbol']}")
-                # Send Discord alert for exit
-                alert_msg = f"**EXIT** - {signal['symbol']}\nReason: {signal.get('reason', 'risk_management')}"
-                send_discord_alert(alert_msg, color=0xff0000)  # Red for exits
+                # Only close if we have a position
+                if signal['symbol'] in current_positions and current_positions[signal['symbol']] > 0:
+                    execution_client.close_position(signal['symbol'])
+                    logger.info(f"Exit signal: Closed {signal['symbol']}")
+                else:
+                    logger.warning(f"Exit signal for {signal['symbol']} but no position exists")
                 
         except Exception as e:
             logger.error(f"Error managing positions: {e}")
