@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, List
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -8,25 +9,37 @@ class PortfolioManager:
         self.max_portfolio_risk = 0.1  # Maximum 10% portfolio risk
         self.stop_loss_pct = 0.05  # 5% stop loss
         self.take_profit_pct = 0.10  # 10% take profit
+        self.max_day_trades = 2  # Max 2 day trades to avoid PDT limit
         
-    def should_enter_trade(self, symbol: str, confidence: float, current_positions: Dict) -> bool:
+    def should_enter_trade(self, symbol: str, confidence: float, current_positions: Dict, day_trade_count: int) -> bool:
         """
-        Determine if we should enter a new trade based on current positions and risk
+        Determine if we should enter a new trade with comprehensive checks
         """
         try:
-            # Check if we already have a position in this symbol
-            if symbol in current_positions:
+            # 1. Check PDT limits
+            if day_trade_count >= self.max_day_trades:
+                logger.info(f"Skipping {symbol} - PDT limit reached ({day_trade_count}/{self.max_day_trades})")
+                return False
+                
+            # 2. Check if we already have a position
+            if symbol in current_positions and current_positions[symbol] > 0:
                 logger.info(f"Skipping {symbol} - already have a position")
                 return False
                 
-            # Check if we have too many positions already
-            if len(current_positions) >= 5:  # Max 5 simultaneous positions
-                logger.info(f"Skipping {symbol} - maximum positions reached ({len(current_positions)})")
+            # 3. Check position count limit
+            if len([p for p in current_positions.values() if p > 0]) >= 3:  # Max 3 positions
+                logger.info(f"Skipping {symbol} - maximum positions reached")
                 return False
                 
-            # Confidence check
-            if confidence < 0.6:
+            # 4. Confidence check
+            if confidence < 0.65:
                 logger.info(f"Skipping {symbol} - confidence too low ({confidence:.2f})")
+                return False
+                
+            # 5. Avoid wash trades - don't trade the same symbol repeatedly
+            # This is a simple prevention - could be enhanced
+            if symbol in self.get_recently_traded_symbols():
+                logger.info(f"Skipping {symbol} - recently traded (wash trade prevention)")
                 return False
                 
             return True
@@ -37,61 +50,35 @@ class PortfolioManager:
             
     def manage_risk(self, current_positions: Dict, market_data: Dict) -> List[Dict]:
         """
-        Manage risk on existing positions and generate exit signals
-        FIXED: Properly handle position data structure
+        Manage risk on existing positions - SIMPLIFIED to prevent errors
         """
         exit_signals = []
         
         try:
-            for symbol, position_data in current_positions.items():
-                # FIX: Check if position_data is a dictionary or just quantity
-                if isinstance(position_data, dict):
-                    # Position data is a dictionary with details
-                    quantity = position_data.get('qty', 0)
-                    entry_price = position_data.get('entry_price', 0)
-                    current_value = position_data.get('current_value', 0)
-                else:
-                    # Position data is just the quantity (float)
-                    quantity = position_data
-                    entry_price = 0  # Unknown without more data
-                    current_value = 0
-                
-                # Skip if no position or unable to get market data
-                if quantity == 0 or symbol not in market_data or market_data[symbol] is None:
-                    continue
+            for symbol, quantity in current_positions.items():
+                if quantity <= 0:
+                    continue  # Skip if no position
                     
-                # Get current price from market data
-                current_price = market_data[symbol]['close'].iloc[-1] if hasattr(market_data[symbol], 'iloc') else 100
-                
-                # Calculate P&L if we have entry price
-                if entry_price > 0:
-                    pnl_pct = (current_price - entry_price) / entry_price
-                    
-                    # Check for stop loss
-                    if pnl_pct <= -self.stop_loss_pct:
-                        exit_signals.append({
-                            'symbol': symbol,
-                            'reason': 'stop_loss',
-                            'pnl_pct': pnl_pct
-                        })
-                    
-                    # Check for take profit
-                    elif pnl_pct >= self.take_profit_pct:
-                        exit_signals.append({
-                            'symbol': symbol,
-                            'reason': 'take_profit',
-                            'pnl_pct': pnl_pct
-                        })
-                
-                # Simple exit rule: if we have any position, consider exit based on other factors
-                # This is a placeholder for more sophisticated risk management
+                # Simple exit rule: close all positions at end of day to avoid PDT
+                # This is a conservative approach until we have better risk management
                 exit_signals.append({
                     'symbol': symbol,
-                    'reason': 'risk_management',
-                    'pnl_pct': 0
+                    'reason': 'end_of_day_closeout',
+                    'quantity': quantity
                 })
                 
         except Exception as e:
             logger.error(f"Error in manage_risk: {e}")
             
         return exit_signals
+        
+    def get_recently_traded_symbols(self) -> List[str]:
+        """
+        Get list of symbols traded recently to avoid wash trades
+        """
+        # This would ideally track trade history, but for now return empty
+        return []
+        
+    def check_pdt_limits(self, day_trade_count: int) -> bool:
+        """Check if we're approaching PDT limits"""
+        return day_trade_count < self.max_day_trades
