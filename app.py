@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
 import pandas as pd
 import numpy as np
-from typing import Dict, List
+from typing import Dict, List, Optional
 import warnings
 warnings.filterwarnings('ignore')
 
