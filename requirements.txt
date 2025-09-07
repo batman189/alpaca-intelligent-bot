@@ -1,24 +1,24 @@
 # Core trading and data libraries
 alpaca-trade-api>=3.1.1
-pandas>=1.5.0
-numpy>=1.24.0
+pandas>=1.5.0,<2.1.0
+numpy>=1.24.0,<1.26.0
 yfinance>=0.2.0
 
-# Technical analysis
-TA-Lib>=0.4.28
+# Technical analysis - TA-Lib might cause issues on Render
+# TA-Lib>=0.4.28  # Comment out if causing build issues
 pandas-ta>=0.3.14b0
 
-# Machine learning (NEW - for Senior Analyst Brain)
-scikit-learn>=1.3.0
-xgboost>=1.7.0
-lightgbm>=4.0.0
+# Machine learning (for Senior Analyst Brain)
+scikit-learn>=1.3.0,<1.4.0
+# xgboost>=1.7.0  # Comment out if causing build issues
+# lightgbm>=4.0.0  # Comment out if causing build issues
 
 # Data processing
-scipy>=1.10.0
+scipy>=1.10.0,<1.12.0
 joblib>=1.3.0
 
 # Web framework
-flask>=2.3.0
+flask>=2.3.0,<3.0.0
 gunicorn>=21.0.0
 
 # Utilities
@@ -26,10 +26,17 @@ python-dotenv>=1.0.0
 requests>=2.31.0
 pytz>=2023.3
 
-# Logging and monitoring
-structlog>=23.1.0
+# Alternative to TA-Lib if it's causing issues
+# talib-binary>=0.4.19  # Use this instead of TA-Lib on some platforms
 
-# Development tools (optional)
-jupyter>=1.0.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
+# Async support
+aiohttp>=3.8.0
+asyncio
+
+# For compatibility
+setuptools>=65.0.0
+wheel
+
+# Add these for better error handling
+python-dateutil>=2.8.0
+six>=1.16.0
