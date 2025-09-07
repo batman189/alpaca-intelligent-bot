@@ -1302,7 +1302,7 @@ class ProfessionalOptionsEngine:
             self.logger.error(f"Error generating market outlook: {e}")
             return {}
             
- def analyze_options_opportunity(self, symbol: str, analysis: Dict, price_data: pd.DataFrame) -> Dict:
+    def analyze_options_opportunity(self, symbol: str, analysis: Dict, price_data: pd.DataFrame) -> Dict:
         """
         Analyze options trading opportunities for a given symbol
         This method is required by the main application
