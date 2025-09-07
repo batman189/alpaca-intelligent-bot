@@ -785,4 +785,4 @@ async def main():
         bot = ProfessionalTradingBot()
         await bot.run()
     except Exception as e:
-        logger.error(f"❌
+        logger.error(f"❌ Critical error starting bot: {e}")
