@@ -786,3 +786,14 @@ async def main():
         await bot.run()
     except Exception as e:
         logger.error(f"❌ Critical error starting bot: {e}")
+        raise
+
+# Entry point
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("🛑 Bot stopped by user")
+    except Exception as e:
+        logger.error(f"💥 Fatal error: {e}")
+        raise
