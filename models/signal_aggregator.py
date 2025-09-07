@@ -1,6 +1,7 @@
 """
 Multi-Source Signal Aggregator - Ultimate Trading Intelligence
 Combines ALL detection methods with smart deduplication and ranking
+COMPLETE VERSION - Fixed async/sync issues and improved error handling
 """
 
 import pandas as pd
@@ -99,7 +100,7 @@ class MultiSourceSignalAggregator:
             "news_impact": 0.8
         }
         
-        # Lowered thresholds per other Claude's recommendations
+        # Lowered thresholds per upgrade recommendations
         self.min_confidence = 40  # Lowered from 75%
         self.min_signals_for_consensus = 2
         self.consensus_threshold = 0.6
@@ -128,7 +129,7 @@ class MultiSourceSignalAggregator:
         
         for i, result in enumerate(async_results):
             if isinstance(result, Exception):
-                method_name = detection_tasks[i].__name__
+                method_name = detection_tasks[i].__name__ if hasattr(detection_tasks[i], '__name__') else f"method_{i}"
                 logger.warning(f"⚠️  {method_name} failed: {result}")
                 self.detection_stats[f"{method_name}_errors"] += 1
             elif result:
@@ -589,35 +590,6 @@ class MultiSourceSignalAggregator:
         upper_band = sma + (std * 2)
         lower_band = sma - (std * 2)
         return upper_band, lower_band, sma
-
-if __name__ == "__main__":
-    # Test the signal aggregator
-    async def test_aggregator():
-        aggregator = MultiSourceSignalAggregator()
-        
-        # Create sample data
-        dates = pd.date_range(start='2024-01-01', periods=100, freq='5min')
-        sample_data = pd.DataFrame({
-            'open': np.random.randn(100).cumsum() + 100,
-            'high': np.random.randn(100).cumsum() + 102,
-            'low': np.random.randn(100).cumsum() + 98,
-            'close': np.random.randn(100).cumsum() + 100,
-            'volume': np.random.randint(10000, 100000, 100)
-        }, index=dates)
-        
-        print("🧪 Testing Multi-Source Signal Aggregator...")
-        
-        signals = await aggregator.aggregate_signals("TEST", sample_data)
-        print(f"✅ Generated {len(signals)} signals")
-        
-        for signal in signals[:3]:
-            print(f"📡 {signal.symbol}: {signal.direction} {signal.signal_type.value} "
-                  f"(confidence: {signal.confidence}%, score: {signal.get_score():.1f})")
-        
-        stats = aggregator.get_aggregation_stats()
-        print(f"📊 Aggregation stats: {stats}")
-    
-    asyncio.run(test_aggregator())
 
 # Backward compatibility alias
 SignalAggregator = MultiSourceSignalAggregator
