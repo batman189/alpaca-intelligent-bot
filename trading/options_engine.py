@@ -1301,7 +1301,171 @@ class ProfessionalOptionsEngine:
         except Exception as e:
             self.logger.error(f"Error generating market outlook: {e}")
             return {}
-
+            
+ def analyze_options_opportunity(self, symbol: str, analysis: Dict, price_data: pd.DataFrame) -> Dict:
+        """
+        Analyze options trading opportunities for a given symbol
+        This method is required by the main application
+        """
+        try:
+            options_analysis = {
+                'symbol': symbol,
+                'timestamp': datetime.now().isoformat(),
+                'opportunities': [],
+                'best_strategy': None,
+                'risk_level': 'medium',
+                'expected_return': 0.0,
+                'probability_of_profit': 0.0
+            }
+            
+            # Get current price and prediction
+            current_price = analysis.get('current_price', price_data['close'].iloc[-1] if len(price_data) > 0 else 100)
+            prediction = analysis.get('prediction', 0)
+            confidence = analysis.get('confidence', 0.5)
+            
+            # Create mock market conditions based on analysis
+            market_conditions = MarketConditions(
+                underlying_price=current_price,
+                implied_volatility=0.25,  # Default IV
+                implied_volatility_rank=0.5,
+                historical_volatility=0.20,
+                volume=1000000,
+                volume_ratio=1.0,
+                trend_strength=prediction * confidence,
+                support_levels=[current_price * 0.95],
+                resistance_levels=[current_price * 1.05],
+                earnings_approaching=False,
+                technical_breakout=confidence > 0.8,
+                momentum_score=confidence
+            )
+            
+            # Mock options chain - in real implementation this would come from data feed
+            mock_options_chain = self._create_mock_options_chain(symbol, current_price)
+            
+            # Analyze opportunities using existing methods
+            opportunities = self.analyze_market_opportunity(
+                symbol, price_data, mock_options_chain, market_conditions
+            )
+            
+            if opportunities:
+                # Select best opportunity
+                best_opportunity = opportunities[0] if opportunities else None
+                
+                options_analysis.update({
+                    'opportunities': opportunities[:3],  # Top 3 opportunities
+                    'best_strategy': best_opportunity.get('strategy', '').value if best_opportunity else None,
+                    'risk_level': 'high' if confidence > 0.8 else 'medium' if confidence > 0.6 else 'low',
+                    'expected_return': best_opportunity.get('expected_return', 0) if best_opportunity else 0,
+                    'probability_of_profit': best_opportunity.get('probability', 0) if best_opportunity else 0
+                })
+            
+            return options_analysis
+            
+        except Exception as e:
+            self.logger.error(f"Error analyzing options opportunity for {symbol}: {e}")
+            return {
+                'symbol': symbol,
+                'opportunities': [],
+                'error': str(e)
+            }
+    
+    def select_best_option_contract(self, symbol: str, opportunity: Dict, account_info: Dict) -> Optional[Dict]:
+        """
+        Select the best option contract from available opportunities
+        This method is required by the main application
+        """
+        try:
+            options_analysis = opportunity.get('options_analysis', {})
+            opportunities = options_analysis.get('opportunities', [])
+            
+            if not opportunities:
+                return None
+            
+            # Select the highest-ranked opportunity
+            best_opportunity = opportunities[0]
+            
+            # Extract contract information
+            contracts = best_opportunity.get('contracts', [])
+            if not contracts:
+                return None
+            
+            # Return the primary contract with required fields
+            primary_contract = contracts[0] if contracts else {}
+            
+            return {
+                'symbol': primary_contract.get('symbol', symbol),
+                'strike': primary_contract.get('strike', 0),
+                'expiration': primary_contract.get('expiration', datetime.now() + timedelta(days=30)),
+                'option_type': primary_contract.get('option_type', 'call'),
+                'ask': primary_contract.get('price', primary_contract.get('ask', 1.0)),
+                'delta': primary_contract.get('delta', 0.5),
+                'gamma': primary_contract.get('gamma', 0.1),
+                'theta': primary_contract.get('theta', -0.05),
+                'vega': primary_contract.get('vega', 0.1),
+                'implied_volatility': primary_contract.get('implied_volatility', 0.25)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error selecting best option contract: {e}")
+            return None
+    
+    def _create_mock_options_chain(self, symbol: str, current_price: float) -> Dict:
+        """Create a mock options chain for analysis when real data is not available"""
+        try:
+            options_chain = {'calls': {}, 'puts': {}}
+            
+            # Create options for next 3 Friday expirations
+            for weeks in [1, 2, 4]:
+                expiration_date = self._get_next_friday(weeks)
+                exp_str = expiration_date.strftime('%Y-%m-%d')
+                
+                options_chain['calls'][exp_str] = {}
+                options_chain['puts'][exp_str] = {}
+                
+                # Create strikes around current price
+                strikes = []
+                for pct in [-0.1, -0.05, 0, 0.05, 0.1]:  # ±10% from current price
+                    strike = round(current_price * (1 + pct))
+                    strikes.append(strike)
+                
+                for strike in strikes:
+                    # Mock call data
+                    options_chain['calls'][exp_str][str(strike)] = {
+                        'strike': strike,
+                        'last_price': max(0.01, current_price - strike + 2.0) if strike < current_price else 1.0,
+                        'bid': 0.5,
+                        'ask': 1.0,
+                        'volume': 100,
+                        'open_interest': 500,
+                        'implied_volatility': 0.25
+                    }
+                    
+                    # Mock put data
+                    options_chain['puts'][exp_str][str(strike)] = {
+                        'strike': strike,
+                        'last_price': max(0.01, strike - current_price + 2.0) if strike > current_price else 1.0,
+                        'bid': 0.5,
+                        'ask': 1.0,
+                        'volume': 100,
+                        'open_interest': 500,
+                        'implied_volatility': 0.25
+                    }
+            
+            return options_chain
+            
+        except Exception as e:
+            self.logger.error(f"Error creating mock options chain: {e}")
+            return {'calls': {}, 'puts': {}}
+    
+    def _get_next_friday(self, weeks: int = 1) -> datetime:
+        """Get the next Friday N weeks from now"""
+        today = datetime.now()
+        days_until_friday = (4 - today.weekday()) % 7
+        if days_until_friday == 0:  # If today is Friday
+            days_until_friday = 7
+        
+        next_friday = today + timedelta(days=days_until_friday + (weeks - 1) * 7)
+        return next_friday
 # Additional utility functions for options analysis
 
 def calculate_implied_volatility(option_price: float,
