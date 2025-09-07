@@ -450,9 +450,32 @@ class MarketReadinessTester:
         
         success_rate = passed_tests / total_tests if total_tests > 0 else 0
         
+        # Log detailed results to file
+        self._write_log("\n" + "=" * 60, also_print=False)
+        self._write_log("DETAILED TEST RESULTS", also_print=False)
+        self._write_log("=" * 60, also_print=False)
+        
+        for test_name, result in self.test_results.items():
+            status = "PASS" if result['success'] else "FAIL"
+            critical_flag = " [CRITICAL]" if result['critical'] else ""
+            details = f" - {result['details']}" if result['details'] else ""
+            self._write_log(f"{status}: {test_name}{critical_flag}{details}", also_print=False)
+        
         print("\n" + "=" * 60)
         print("🚀 MARKET READINESS ASSESSMENT")
         print("=" * 60)
+        
+        summary_lines = [
+            "\nMARKET READINESS ASSESSMENT SUMMARY",
+            "=" * 40,
+            f"Test Results: {passed_tests}/{total_tests} passed ({success_rate:.1%})",
+            f"Critical Failures: {critical_failures}",
+            f"Warnings: {warnings_count}",
+            f"Total Test Time: {total_time:.2f}s"
+        ]
+        
+        for line in summary_lines:
+            self._write_log(line, also_print=False)
         
         print(f"📊 Test Results: {passed_tests}/{total_tests} passed ({success_rate:.1%})")
         print(f"⚠️  Critical Failures: {critical_failures}")
@@ -460,36 +483,59 @@ class MarketReadinessTester:
         print(f"⏱️  Total Test Time: {total_time:.2f}s")
         
         if critical_failures == 0 and success_rate >= 0.8:
-            print("\n🟢 READY FOR MARKET OPEN!")
-            print("✅ All critical systems operational")
-            print("✅ Bot is ready for production trading")
-            print("✅ No critical issues detected")
             recommendation = "PROCEED"
+            status_msg = "🟢 READY FOR MARKET OPEN!"
+            details = [
+                "✅ All critical systems operational",
+                "✅ Bot is ready for production trading", 
+                "✅ No critical issues detected"
+            ]
         elif critical_failures == 0 and success_rate >= 0.6:
-            print("\n🟡 MOSTLY READY - MINOR ISSUES")
-            print("⚠️  Some non-critical issues detected")
-            print("⚠️  Review warnings before market open")
-            print("✅ Core trading functionality intact")
             recommendation = "PROCEED WITH CAUTION"
+            status_msg = "🟡 MOSTLY READY - MINOR ISSUES"
+            details = [
+                "⚠️  Some non-critical issues detected",
+                "⚠️  Review warnings before market open",
+                "✅ Core trading functionality intact"
+            ]
         else:
-            print("\n🔴 NOT READY - CRITICAL ISSUES")
-            print("❌ Critical failures must be resolved")
-            print("❌ Do not use for live trading")
-            print("🔧 Fix critical issues before market open")
             recommendation = "DO NOT PROCEED"
+            status_msg = "🔴 NOT READY - CRITICAL ISSUES"
+            details = [
+                "❌ Critical failures must be resolved",
+                "❌ Do not use for live trading",
+                "🔧 Fix critical issues before market open"
+            ]
+        
+        print(f"\n{status_msg}")
+        for detail in details:
+            print(detail)
+            
+        # Log recommendation
+        self._write_log(f"\nFINAL RECOMMENDATION: {recommendation}", also_print=False)
+        self._write_log(status_msg, also_print=False)
+        for detail in details:
+            self._write_log(detail, also_print=False)
         
         if self.critical_failures:
             print(f"\n🚨 CRITICAL FAILURES TO FIX:")
+            self._write_log("\nCRITICAL FAILURES TO FIX:", also_print=False)
             for failure in self.critical_failures:
                 print(f"   - {failure}")
+                self._write_log(f"   - {failure}", also_print=False)
         
         if self.warnings:
             print(f"\n⚠️  WARNINGS TO REVIEW:")
+            self._write_log("\nWARNINGS TO REVIEW:", also_print=False)
             for warning in self.warnings:
                 print(f"   - {warning}")
+                self._write_log(f"   - {warning}", also_print=False)
         
         print(f"\n🎯 FINAL RECOMMENDATION: {recommendation}")
         print("=" * 60)
+        
+        # Save log file
+        self._save_log_file()
         
         return {
             'ready': critical_failures == 0 and success_rate >= 0.8,
