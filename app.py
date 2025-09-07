@@ -68,8 +68,8 @@ try:
     from data.data_client import EnhancedDataClient
     from trading.options_engine import ProfessionalOptionsEngine
     from trading.execution_client import AdvancedExecutionClient
-    from trading.portfolio_manager import PortfolioManager as IntelligentRiskManager
-    from models.reinforcement_learner import ReinforcementLearner as AdaptiveLearningSystem
+    from trading.intelligent_risk_manager import IntelligentRiskManager
+    from models.adaptive_learning_system import AdaptiveLearningSystem
     
     COMPONENTS_LOADED = True
     logger.info("All components loaded successfully")
