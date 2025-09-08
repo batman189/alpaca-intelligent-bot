@@ -1,3 +1,8 @@
+# Build tools - MUST be at the top
+setuptools>=65.0.0
+wheel>=0.37.0
+pip>=22.0.0
+
 # Core trading and data libraries
 alpaca-trade-api>=3.1.1
 pandas>=1.5.0,<2.1.0
@@ -22,7 +27,5 @@ requests>=2.31.0
 pytz>=2023.3
 
 # For better compatibility
-setuptools>=65.0.0
-wheel
 python-dateutil>=2.8.0
 six>=1.16.0
