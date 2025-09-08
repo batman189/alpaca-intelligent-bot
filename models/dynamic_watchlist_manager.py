@@ -41,6 +41,9 @@ class DynamicWatchlistManager:
     def __init__(self, base_symbols: List[str] = None):
         """Initialize dynamic watchlist management system"""
         
+        # ADD THIS LINE TO FIX THE MISSING NAME ATTRIBUTE
+        self.name = "DynamicWatchlistManager"
+    
         # Base static watchlist
         self.base_symbols = set(base_symbols or [
             "SPY", "QQQ", "IWM", "AAPL", "GOOGL", "MSFT", "TSLA", 
