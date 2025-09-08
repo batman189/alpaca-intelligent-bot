@@ -2,6 +2,7 @@
 Professional Trading Bot - Main Application
 UPDATED VERSION with Senior Analyst ML Intelligence
 Complete rebuild with real intelligence and pattern recognition
+RENDER-OPTIMIZED VERSION
 """
 
 import os
@@ -9,6 +10,7 @@ import time
 import logging
 import threading
 import asyncio
+import tempfile
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
 import pandas as pd
@@ -17,22 +19,40 @@ from typing import Dict, List, Optional
 import warnings
 warnings.filterwarnings('ignore')
 
-# Configure professional logging
+# Configure professional logging with fallback
+try:
+    log_dir = 'logs'
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, 'trading_bot.log')
+    # Test if we can write to the log file
+    with open(log_file, 'a') as f:
+        f.write('')
+    log_handlers = [
+        logging.StreamHandler(),
+        logging.FileHandler(log_file)
+    ]
+except (OSError, PermissionError):
+    # Fallback to console only if file logging fails
+    log_handlers = [logging.StreamHandler()]
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('logs/trading_bot.log') if os.path.exists('logs') else logging.StreamHandler()
-    ]
+    handlers=log_handlers
 )
 
-# Create directories with error handling
+# Create directories with error handling and fallbacks
 for directory in ['logs', 'data', 'models', 'monitoring']:
     try:
         os.makedirs(directory, exist_ok=True)
     except Exception as e:
         print(f"Warning: Could not create directory {directory}: {e}")
+        # Try to create in temp directory
+        try:
+            temp_dir = tempfile.mkdtemp(prefix=f'{directory}_')
+            print(f"Using temp directory for {directory}: {temp_dir}")
+        except Exception as e2:
+            print(f"Could not even create temp directory: {e2}")
 
 logger = logging.getLogger(__name__)
 
@@ -51,35 +71,39 @@ class Config:
         if not self.APCA_API_KEY_ID or not self.APCA_API_SECRET_KEY:
             logger.warning("Missing Alpaca API credentials - trading will be disabled")
         
-        # Trading settings
-        self.WATCHLIST = os.getenv('WATCHLIST', 'SPY,QQQ,TSLA,AAPL,MSFT,NVDA,GOOGL,AMZN,META').split(',')
+        # Trading settings with safer defaults for production
+        self.WATCHLIST = os.getenv('WATCHLIST', 'SPY,QQQ,AAPL,MSFT').split(',')
         self.ENABLE_TRADING = os.getenv('ENABLE_TRADING', 'false').lower() == 'true'
-        self.MAX_POSITIONS = int(os.getenv('MAX_POSITIONS', '5'))
-        self.RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.05'))
+        self.MAX_POSITIONS = int(os.getenv('MAX_POSITIONS', '2'))  # Reduced for safety
+        self.RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.02'))  # Reduced risk
         
         # Analysis settings
         self.CONFIDENCE_THRESHOLD = float(os.getenv('CONFIDENCE_THRESHOLD', '0.70'))
-        self.ANALYSIS_INTERVAL = int(os.getenv('ANALYSIS_INTERVAL', '60'))
+        self.ANALYSIS_INTERVAL = int(os.getenv('ANALYSIS_INTERVAL', '300'))  # 5 minutes for production
         
         # Multi-timeframe settings
         self.TIMEFRAMES = ['1Min', '5Min', '15Min', '1Hour']
         self.PRIMARY_TIMEFRAME = os.getenv('PRIMARY_TIMEFRAME', '15Min')
         
-        # Options settings
-        self.FOCUS_OPTIONS = os.getenv('FOCUS_OPTIONS', 'true').lower() == 'true'
+        # Options settings - disabled by default in production
+        self.FOCUS_OPTIONS = os.getenv('FOCUS_OPTIONS', 'false').lower() == 'true'
         self.OPTIONS_EXPIRATION_DAYS = int(os.getenv('OPTIONS_EXPIRATION_DAYS', '30'))
         
         # Senior Analyst settings
         self.ENABLE_SENIOR_ANALYST = os.getenv('ENABLE_SENIOR_ANALYST', 'true').lower() == 'true'
-        self.TRAINING_PERIODS = int(os.getenv('TRAINING_PERIODS', '2000'))
+        self.TRAINING_PERIODS = int(os.getenv('TRAINING_PERIODS', '500'))  # Reduced for faster startup
 
 # Mock/Fallback components for when imports fail
 class MockComponent:
     def __init__(self, *args, **kwargs):
         self.name = "MockComponent"
+        logger.warning(f"Using MockComponent - some functionality will be disabled")
     
     def __getattr__(self, name):
-        return lambda *args, **kwargs: None
+        def mock_method(*args, **kwargs):
+            logger.debug(f"MockComponent.{name} called")
+            return None
+        return mock_method
     
     async def __aenter__(self):
         return self
@@ -92,13 +116,16 @@ def safe_import_components():
     """Safely import components with fallbacks"""
     components = {}
     
-    # Core components
+    # Core components with robust error handling
     try:
         from models.advanced_market_analyzer import AdvancedMarketAnalyzer
         components['AdvancedMarketAnalyzer'] = AdvancedMarketAnalyzer
         logger.info("✅ AdvancedMarketAnalyzer imported")
+    except ImportError as e:
+        logger.warning(f"⚠️ AdvancedMarketAnalyzer import failed (ImportError): {e}")
+        components['AdvancedMarketAnalyzer'] = MockComponent
     except Exception as e:
-        logger.warning(f"⚠️ AdvancedMarketAnalyzer import failed: {e}")
+        logger.warning(f"⚠️ AdvancedMarketAnalyzer import failed (Other): {e}")
         components['AdvancedMarketAnalyzer'] = MockComponent
     
     try:
@@ -197,8 +224,13 @@ def safe_import_components():
         logger.info("🧠 ✅ SENIOR ANALYST BRAIN imported successfully!")
         global SENIOR_ANALYST_AVAILABLE
         SENIOR_ANALYST_AVAILABLE = True
+    except ImportError as e:
+        logger.warning(f"⚠️ Senior Analyst Brain import failed (ImportError): {e}")
+        logger.warning("This might be due to missing sklearn or other ML dependencies")
+        components['SeniorAnalystIntegration'] = MockComponent
+        SENIOR_ANALYST_AVAILABLE = False
     except Exception as e:
-        logger.warning(f"⚠️ Senior Analyst Brain import failed: {e}")
+        logger.warning(f"⚠️ Senior Analyst Brain import failed (Other): {e}")
         components['SeniorAnalystIntegration'] = MockComponent
         SENIOR_ANALYST_AVAILABLE = False
     
@@ -277,37 +309,99 @@ class ProfessionalTradingBot:
     def initialize_components(self):
         """Initialize components with proper error handling"""
         try:
-            # Core components
-            self.market_analyzer = COMPONENTS['AdvancedMarketAnalyzer']()
-            self.data_client = COMPONENTS['EnhancedDataClient'](
-                self.config.APCA_API_KEY_ID,
-                self.config.APCA_API_SECRET_KEY,
-                self.config.APCA_API_BASE_URL
-            )
-            self.options_engine = COMPONENTS['ProfessionalOptionsEngine']()
-            self.execution_client = COMPONENTS['AdvancedExecutionClient'](
-                self.config.APCA_API_KEY_ID,
-                self.config.APCA_API_SECRET_KEY,
-                self.config.APCA_API_BASE_URL
-            )
-            self.risk_manager = COMPONENTS['IntelligentRiskManager']()
-            self.learning_system = COMPONENTS['AdaptiveLearningSystem']()
+            # Core components with safe initialization
+            try:
+                self.market_analyzer = COMPONENTS['AdvancedMarketAnalyzer']()
+            except Exception as e:
+                logger.error(f"Failed to initialize market analyzer: {e}")
+                self.market_analyzer = MockComponent()
+            
+            try:
+                self.data_client = COMPONENTS['EnhancedDataClient'](
+                    self.config.APCA_API_KEY_ID,
+                    self.config.APCA_API_SECRET_KEY,
+                    self.config.APCA_API_BASE_URL
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize data client: {e}")
+                self.data_client = MockComponent()
+            
+            try:
+                self.options_engine = COMPONENTS['ProfessionalOptionsEngine']()
+            except Exception as e:
+                logger.error(f"Failed to initialize options engine: {e}")
+                self.options_engine = MockComponent()
+            
+            try:
+                self.execution_client = COMPONENTS['AdvancedExecutionClient'](
+                    self.config.APCA_API_KEY_ID,
+                    self.config.APCA_API_SECRET_KEY,
+                    self.config.APCA_API_BASE_URL
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize execution client: {e}")
+                self.execution_client = MockComponent()
+            
+            try:
+                self.risk_manager = COMPONENTS['IntelligentRiskManager']()
+            except Exception as e:
+                logger.error(f"Failed to initialize risk manager: {e}")
+                self.risk_manager = MockComponent()
+            
+            try:
+                self.learning_system = COMPONENTS['AdaptiveLearningSystem']()
+            except Exception as e:
+                logger.error(f"Failed to initialize learning system: {e}")
+                self.learning_system = MockComponent()
             
             # Upgrade components
-            self.data_manager = COMPONENTS['MultiSourceDataManager'](
-                self.config.APCA_API_KEY_ID,
-                self.config.APCA_API_SECRET_KEY
-            )
-            self.signal_aggregator = COMPONENTS['MultiSourceSignalAggregator']()
-            self.timeframe_scanner = COMPONENTS['MultiTimeframeScanner']()
-            self.regime_detector = COMPONENTS['MarketRegimeDetector']()
-            self.watchlist_manager = COMPONENTS['DynamicWatchlistManager'](self.config.WATCHLIST)
-            self.logger = COMPONENTS['ComprehensiveLogger']()
+            try:
+                self.data_manager = COMPONENTS['MultiSourceDataManager'](
+                    self.config.APCA_API_KEY_ID,
+                    self.config.APCA_API_SECRET_KEY
+                )
+            except Exception as e:
+                logger.error(f"Failed to initialize data manager: {e}")
+                self.data_manager = MockComponent()
+            
+            try:
+                self.signal_aggregator = COMPONENTS['MultiSourceSignalAggregator']()
+            except Exception as e:
+                logger.error(f"Failed to initialize signal aggregator: {e}")
+                self.signal_aggregator = MockComponent()
+            
+            try:
+                self.timeframe_scanner = COMPONENTS['MultiTimeframeScanner']()
+            except Exception as e:
+                logger.error(f"Failed to initialize timeframe scanner: {e}")
+                self.timeframe_scanner = MockComponent()
+            
+            try:
+                self.regime_detector = COMPONENTS['MarketRegimeDetector']()
+            except Exception as e:
+                logger.error(f"Failed to initialize regime detector: {e}")
+                self.regime_detector = MockComponent()
+            
+            try:
+                self.watchlist_manager = COMPONENTS['DynamicWatchlistManager'](self.config.WATCHLIST)
+            except Exception as e:
+                logger.error(f"Failed to initialize watchlist manager: {e}")
+                self.watchlist_manager = MockComponent()
+            
+            try:
+                self.logger = COMPONENTS['ComprehensiveLogger']()
+            except Exception as e:
+                logger.error(f"Failed to initialize comprehensive logger: {e}")
+                self.logger = MockComponent()
             
             # 🧠 SENIOR ANALYST BRAIN - The Intelligence Upgrade
             if SENIOR_ANALYST_AVAILABLE and self.config.ENABLE_SENIOR_ANALYST:
-                self.senior_analyst = COMPONENTS['SeniorAnalystIntegration']()
-                logger.info("🧠 SENIOR ANALYST BRAIN activated - Trading intelligence upgraded!")
+                try:
+                    self.senior_analyst = COMPONENTS['SeniorAnalystIntegration']()
+                    logger.info("🧠 SENIOR ANALYST BRAIN activated - Trading intelligence upgraded!")
+                except Exception as e:
+                    logger.error(f"Failed to initialize senior analyst: {e}")
+                    self.senior_analyst = None
             else:
                 self.senior_analyst = None
                 logger.warning("⚠️ Senior Analyst Brain not available - using basic analysis")
@@ -341,18 +435,18 @@ class ProfessionalTradingBot:
         training_start = time.time()
         
         # Train on top symbols first for faster startup
-        priority_symbols = self.config.WATCHLIST[:5]  # Top 5 symbols
+        priority_symbols = self.config.WATCHLIST[:3]  # Top 3 symbols only for faster startup
         
         for i, symbol in enumerate(priority_symbols):
             try:
                 logger.info(f"🎓 Training Senior Analyst on {symbol} ({i+1}/{len(priority_symbols)})...")
                 
-                # Get lots of historical data for training
+                # Get historical data with reduced periods for faster training
                 historical_data = await self.data_manager.get_market_data(
                     symbol, "15Min", self.config.TRAINING_PERIODS
                 )
                 
-                if historical_data is not None and len(historical_data) > 500:
+                if historical_data is not None and len(historical_data) > 100:
                     await self.senior_analyst.initialize_for_symbol(symbol, historical_data)
                     logger.info(f"✅ Senior Analyst trained on {symbol} ({len(historical_data)} data points)")
                 else:
@@ -366,21 +460,24 @@ class ProfessionalTradingBot:
         
         # Get intelligence report
         if hasattr(self.senior_analyst, 'get_system_intelligence_report'):
-            intelligence_report = self.senior_analyst.get_system_intelligence_report()
-            logger.info(f"🧠 Current Intelligence Level: {intelligence_report.get('intelligence_level', 'Unknown')}")
-            logger.info(f"📊 System Maturity: {intelligence_report.get('system_maturity', 'Unknown')}")
+            try:
+                intelligence_report = self.senior_analyst.get_system_intelligence_report()
+                logger.info(f"🧠 Current Intelligence Level: {intelligence_report.get('intelligence_level', 'Unknown')}")
+                logger.info(f"📊 System Maturity: {intelligence_report.get('system_maturity', 'Unknown')}")
+            except Exception as e:
+                logger.warning(f"Could not get intelligence report: {e}")
     
     async def run_market_analysis_cycle(self):
         """Run market analysis cycle with Senior Analyst intelligence"""
         try:
             logger.info("🔄 Starting market analysis cycle...")
             
-            # Get account info
+            # Get account info with fallback
             try:
                 account_info = {'equity': 100000, 'buying_power': 50000}  # Default values
                 current_positions = {}  # Default empty positions
                 
-                if hasattr(self.execution_client, 'get_account_info'):
+                if hasattr(self.execution_client, 'get_account_info') and self.execution_client.name != "MockComponent":
                     try:
                         account_info = await self.execution_client.get_account_info()
                         current_positions = await self.execution_client.get_current_positions()
@@ -395,13 +492,13 @@ class ProfessionalTradingBot:
             
             # Get symbols to analyze
             try:
-                if hasattr(self.watchlist_manager, 'get_all_symbols'):
-                    symbols = list(self.watchlist_manager.get_all_symbols())[:10]
+                if hasattr(self.watchlist_manager, 'get_all_symbols') and self.watchlist_manager.name != "MockComponent":
+                    symbols = list(self.watchlist_manager.get_all_symbols())[:5]  # Reduced for faster processing
                 else:
-                    symbols = self.config.WATCHLIST[:10]
+                    symbols = self.config.WATCHLIST[:5]  # Reduced for faster processing
             except Exception as e:
                 logger.warning(f"Using default watchlist due to error: {e}")
-                symbols = self.config.WATCHLIST[:10]
+                symbols = self.config.WATCHLIST[:5]
             
             # Analyze symbols with Senior Analyst intelligence
             analysis_results = []
@@ -438,14 +535,14 @@ class ProfessionalTradingBot:
             logger.debug(f"🔍 Senior Analyst analyzing {symbol}...")
             
             # Get market data
-            market_data = await self.data_manager.get_market_data(symbol, self.config.PRIMARY_TIMEFRAME, 200)
+            market_data = await self.data_manager.get_market_data(symbol, self.config.PRIMARY_TIMEFRAME, 100)
             
-            if market_data is None or len(market_data) < 50:
+            if market_data is None or len(market_data) < 20:
                 logger.warning(f"Insufficient data for {symbol}")
                 return None
             
             # USE SENIOR ANALYST BRAIN FOR INTELLIGENCE
-            if self.senior_analyst:
+            if self.senior_analyst and self.senior_analyst.name != "MockComponent":
                 try:
                     # Get senior analyst recommendation with circuit breaker
                     analysis = await self.circuit_breakers['senior_analyst'].call(
@@ -615,7 +712,7 @@ class ProfessionalTradingBot:
         """Execute trading decisions with learning feedback"""
         try:
             executed_trades = 0
-            max_trades = min(3, self.config.MAX_POSITIONS)
+            max_trades = min(2, self.config.MAX_POSITIONS)  # Conservative for production
             
             for opportunity in opportunities[:max_trades]:
                 symbol = opportunity.get('symbol')
@@ -666,7 +763,7 @@ class ProfessionalTradingBot:
             self.active_trades[trade_id] = trade_data
             
             # Feed back to Senior Analyst for learning
-            if self.senior_analyst:
+            if self.senior_analyst and self.senior_analyst.name != "MockComponent":
                 await self.senior_analyst.learn_from_trade_outcome(symbol, trade_data)
             
             # Simulate successful execution
@@ -704,7 +801,7 @@ class ProfessionalTradingBot:
             self.active_trades[trade_id] = trade_data
             
             # Feed back to learning system
-            if self.senior_analyst:
+            if self.senior_analyst and self.senior_analyst.name != "MockComponent":
                 await self.senior_analyst.learn_from_trade_outcome(symbol, trade_data)
             
             logger.info(f"📊 Options trade simulated for {symbol} (Grade: {trade_data['analyst_grade']})")
@@ -723,7 +820,7 @@ class ProfessionalTradingBot:
         try:
             # Wait for trade to "complete" (simulate holding period)
             time_horizon = opportunity.get('time_horizon_minutes', 240)
-            await asyncio.sleep(min(time_horizon * 60, 3600))  # Max 1 hour for demo
+            await asyncio.sleep(min(time_horizon * 60, 1800))  # Max 30 minutes for demo
             
             # Simulate trade outcome
             import random
@@ -775,8 +872,11 @@ class ProfessionalTradingBot:
         try:
             # Update Senior Analyst accuracy if available
             if self.senior_analyst and hasattr(self.senior_analyst, 'get_system_intelligence_report'):
-                intelligence_report = self.senior_analyst.get_system_intelligence_report()
-                self.performance_metrics['senior_analyst_accuracy'] = intelligence_report.get('average_accuracy', 0.0)
+                try:
+                    intelligence_report = self.senior_analyst.get_system_intelligence_report()
+                    self.performance_metrics['senior_analyst_accuracy'] = intelligence_report.get('average_accuracy', 0.0)
+                except Exception as e:
+                    logger.debug(f"Could not get intelligence report: {e}")
             
             self.performance_metrics['last_updated'] = datetime.now().isoformat()
             
@@ -792,8 +892,8 @@ class ProfessionalTradingBot:
         
         self.running = True
         
-        # Train the Senior Analyst first
-        if self.senior_analyst:
+        # Train the Senior Analyst first (if available)
+        if self.senior_analyst and self.senior_analyst.name != "MockComponent":
             await self.initialize_senior_analyst_training()
         
         try:
@@ -853,7 +953,7 @@ def detailed_health():
 def get_intelligence_status():
     """Get senior analyst intelligence status"""
     try:
-        if bot and bot.senior_analyst:
+        if bot and bot.senior_analyst and bot.senior_analyst.name != "MockComponent":
             intelligence_report = bot.senior_analyst.get_system_intelligence_report()
             return jsonify({
                 'status': 'active',
@@ -880,7 +980,7 @@ def get_performance():
                 'performance_metrics': bot.performance_metrics,
                 'active_trades': len(bot.active_trades),
                 'completed_trades': len(bot.completed_trades),
-                'senior_analyst_status': 'active' if bot.senior_analyst else 'unavailable',
+                'senior_analyst_status': 'active' if bot.senior_analyst and bot.senior_analyst.name != "MockComponent" else 'unavailable',
                 'timestamp': datetime.now().isoformat()
             })
         else:
@@ -937,7 +1037,7 @@ def run_test():
 def trigger_retrain():
     """Trigger Senior Analyst retraining"""
     try:
-        if bot and bot.senior_analyst:
+        if bot and bot.senior_analyst and bot.senior_analyst.name != "MockComponent":
             # This would trigger retraining in a real system
             asyncio.create_task(bot.initialize_senior_analyst_training())
             return jsonify({
@@ -950,6 +1050,26 @@ def trigger_retrain():
                 'status': 'unavailable',
                 'message': 'Senior Analyst not available for retraining'
             }), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/config')
+def get_config():
+    """Get current configuration"""
+    try:
+        if bot:
+            return jsonify({
+                'watchlist': bot.config.WATCHLIST,
+                'trading_enabled': bot.config.ENABLE_TRADING,
+                'max_positions': bot.config.MAX_POSITIONS,
+                'confidence_threshold': bot.config.CONFIDENCE_THRESHOLD,
+                'analysis_interval': bot.config.ANALYSIS_INTERVAL,
+                'senior_analyst_enabled': bot.config.ENABLE_SENIOR_ANALYST,
+                'options_enabled': bot.config.FOCUS_OPTIONS,
+                'environment': os.getenv('ENVIRONMENT', 'development')
+            })
+        else:
+            return jsonify({'error': 'Bot not initialized'}), 503
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
