@@ -828,15 +828,67 @@ class SeniorAnalystBrain:
             with self.training_lock:
                 logger.info(f"🧠 Training senior analyst models for {symbol}...")
                 
-                # 1. FEATURE ENGINEERING
-                features = await self.feature_engine.engineer_comprehensive_features(historical_data, symbol)
-                
-                # 2. CREATE LABELS (what would a senior analyst have done?)
-                labels = self._create_training_labels(historical_data)
-                
-                if len(features) != len(labels) or len(features) < 50:
-                    logger.warning(f"Insufficient training data for {symbol}")
-                    return False
+             # 1. CREATE LABELS FIRST (what would a senior analyst have done?)
+labels = self._create_training_labels(historical_data)
+
+if len(labels) < 50:
+    logger.warning(f"Insufficient training data for {symbol} - only {len(labels)} labels")
+    return False
+
+# 2. FEATURE ENGINEERING - generate features to match labels
+features_list = []
+close_prices = historical_data['close']
+returns = close_prices.pct_change().fillna(0)
+
+# Generate features for each label point
+lookhead_periods = 16  # Same as in _create_training_labels
+for i in range(len(historical_data) - lookhead_periods):
+    if i < 20:  # Need enough lookback
+        continue
+        
+    # Generate features for this time point
+    feature_row = []
+    
+    # Simple features that match what we generate in real-time
+    feature_row.extend([
+        returns.iloc[i],  # Latest return
+        returns.iloc[i-5:i].mean() if i >= 5 else 0,  # 5-period momentum
+        returns.iloc[i-10:i].mean() if i >= 10 else 0,  # 10-period momentum  
+        returns.iloc[i-20:i].mean(),  # 20-period momentum
+        returns.iloc[i-20:i].std(),  # Volatility
+        returns.iloc[i-5:i].std() if i >= 5 else 0,  # Short-term volatility
+    ])
+    
+    # Add volume features if available
+    if 'volume' in historical_data.columns:
+        volume = historical_data['volume']
+        volume_ma = volume.iloc[i-20:i].mean() if i >= 20 else volume.iloc[:i].mean()
+        feature_row.extend([
+            volume.iloc[i] / volume_ma if volume_ma > 0 else 1,
+            volume.iloc[i-5:i].mean() / volume_ma if volume_ma > 0 and i >= 5 else 1,
+        ])
+    else:
+        feature_row.extend([1.0, 1.0])
+    
+    # Add technical indicators
+    sma_20 = close_prices.iloc[i-20:i].mean() if i >= 20 else close_prices.iloc[:i].mean()
+    feature_row.append(close_prices.iloc[i] / sma_20 if sma_20 > 0 else 1)
+    
+    # Trend strength
+    trend = (close_prices.iloc[i] - close_prices.iloc[i-10]) / close_prices.iloc[i-10] if i >= 10 else 0
+    feature_row.append(trend)
+    
+    # Pad to 12 features
+    while len(feature_row) < 12:
+        feature_row.append(0.0)
+    
+    features_list.append(feature_row[:12])
+
+features = np.array(features_list)
+
+if len(features) != len(labels):
+    logger.warning(f"Feature/label mismatch for {symbol}: {len(features)} features, {len(labels)} labels")
+    return False
                 
                 # 3. PREPARE TRAINING DATA
                 X_train, X_test, y_train, y_test = train_test_split(
