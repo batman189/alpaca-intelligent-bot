@@ -153,22 +153,58 @@ class NewsImpactAnalyzer:
         """Fetch news from Yahoo Finance"""
         try:
             ticker = yf.Ticker(symbol)
-            news_data = ticker.news
+            
+            # Get news data with proper error handling
+            try:
+                news_data = ticker.news
+            except Exception as news_fetch_error:
+                self.logger.error(f"Failed to fetch news data for {symbol}: {news_fetch_error}")
+                return []
+            
+            # Validate news_data
+            if not news_data:
+                self.logger.debug(f"No news data available for {symbol}")
+                return []
+            
+            if not isinstance(news_data, list):
+                self.logger.error(f"Unexpected news data format for {symbol}: {type(news_data)}")
+                return []
             
             articles = []
             cutoff_time = datetime.now() - timedelta(hours=hours_back)
             
             for item in news_data[:10]:  # Limit to recent articles
                 try:
-                    # Convert timestamp
-                    article_time = datetime.fromtimestamp(item.get('providerPublishTime', 0))
+                    # Validate item structure
+                    if not isinstance(item, dict):
+                        self.logger.debug(f"Skipping invalid news item: {type(item)}")
+                        continue
+                    
+                    # Get timestamp with fallback
+                    timestamp = item.get('providerPublishTime', 0)
+                    if not timestamp:
+                        self.logger.debug("Skipping news item with no timestamp")
+                        continue
+                    
+                    # Convert timestamp safely
+                    try:
+                        article_time = datetime.fromtimestamp(timestamp)
+                    except (ValueError, TypeError, OSError) as ts_error:
+                        self.logger.debug(f"Invalid timestamp {timestamp}: {ts_error}")
+                        continue
                     
                     if article_time < cutoff_time:
                         continue
                     
+                    # Validate required fields
+                    title = item.get('title', '').strip()
+                    if not title:
+                        self.logger.debug("Skipping news item with no title")
+                        continue
+                    
                     article = NewsArticle(
-                        title=item.get('title', ''),
-                        content=item.get('summary', ''),
+                        title=title,
+                        content=item.get('summary', '').strip(),
                         symbol=symbol,
                         timestamp=article_time,
                         source='Yahoo Finance',
@@ -178,10 +214,10 @@ class NewsImpactAnalyzer:
                     articles.append(article)
                     
                 except Exception as e:
-                    self.logger.debug(f"Error processing news item: {e}")
+                    self.logger.debug(f"Error processing news item for {symbol}: {e}")
                     continue
             
-            self.logger.debug(f"Fetched {len(articles)} articles from Yahoo Finance for {symbol}")
+            self.logger.debug(f"Fetched {len(articles)} valid articles from Yahoo Finance for {symbol}")
             return articles
             
         except Exception as e:
