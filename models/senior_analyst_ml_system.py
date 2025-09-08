@@ -1,8 +1,7 @@
 """
-Senior Analyst ML Intelligence System
+Senior Analyst ML Intelligence System - FIXED VERSION
 True machine learning that learns patterns, adapts strategies, and makes intelligent decisions
 This is the REAL AI brain that makes your bot as smart as a senior analyst
-FIXED VERSION - Added missing 'name' attribute
 """
 
 import numpy as np
@@ -31,13 +30,6 @@ try:
 except ImportError:
     ML_AVAILABLE = False
     print("Warning: sklearn not available - using rule-based fallbacks")
-
-try:
-    import talib
-    TALIB_AVAILABLE = True
-except ImportError:
-    TALIB_AVAILABLE = False
-    print("Warning: TA-Lib not available - using simple indicators")
 
 warnings.filterwarnings('ignore')
 logger = logging.getLogger(__name__)
@@ -72,6 +64,209 @@ class LearningOutcome:
     lessons_learned: List[str]
     pattern_effectiveness: Dict[str, float]
 
+# Mock components for when ML is not available
+class MockComponent:
+    def __init__(self):
+        self.name = "MockComponent"
+    
+    async def engineer_comprehensive_features(self, data, symbol):
+        """Mock feature engineering"""
+        if len(data) < 10:
+            return np.array([[0.5, 0.5, 0.5, 0.5, 0.5]])
+        
+        # Simple features from price data
+        returns = data['close'].pct_change().fillna(0)
+        volume_ratio = data['volume'] / data['volume'].mean() if 'volume' in data.columns else 1
+        
+        features = [
+            returns.iloc[-1],  # Latest return
+            returns.tail(5).mean(),  # 5-period avg return
+            volume_ratio.iloc[-1] if hasattr(volume_ratio, 'iloc') else volume_ratio,  # Volume ratio
+            data['close'].iloc[-1] / data['close'].iloc[-10] - 1 if len(data) >= 10 else 0,  # 10-period return
+            returns.std()  # Volatility
+        ]
+        
+        return np.array([features])
+    
+    def detect_all_patterns(self, data):
+        """Mock pattern detection"""
+        return {
+            'strong_patterns': ['trend_following'],
+            'weak_patterns': []
+        }
+    
+    def detect_current_regime(self, data, context):
+        """Mock regime detection"""
+        return MarketRegime.BULL_TRENDING
+
+class AdvancedFeatureEngine:
+    def __init__(self):
+        self.name = "AdvancedFeatureEngine"
+    
+    async def engineer_comprehensive_features(self, market_data: pd.DataFrame, symbol: str) -> np.ndarray:
+        """Engineer comprehensive features for ML analysis"""
+        try:
+            if len(market_data) < 20:
+                # Return basic features if insufficient data
+                return np.array([[0.5, 0.5, 0.5, 0.5, 0.5]])
+            
+            features = []
+            
+            # Price features
+            close_prices = market_data['close']
+            returns = close_prices.pct_change().fillna(0)
+            
+            # Momentum features
+            features.extend([
+                returns.iloc[-1],  # Latest return
+                returns.tail(5).mean(),  # 5-period momentum
+                returns.tail(10).mean(),  # 10-period momentum
+                returns.tail(20).mean(),  # 20-period momentum
+            ])
+            
+            # Volatility features
+            features.extend([
+                returns.std(),  # Volatility
+                returns.tail(5).std(),  # Short-term volatility
+                returns.tail(20).std(),  # Long-term volatility
+            ])
+            
+            # Volume features (if available)
+            if 'volume' in market_data.columns:
+                volume = market_data['volume']
+                volume_ma = volume.rolling(20).mean()
+                features.extend([
+                    volume.iloc[-1] / volume_ma.iloc[-1] if volume_ma.iloc[-1] > 0 else 1,  # Volume ratio
+                    volume.tail(5).mean() / volume_ma.iloc[-1] if volume_ma.iloc[-1] > 0 else 1,  # Recent volume trend
+                ])
+            else:
+                features.extend([1.0, 1.0])  # Default volume features
+            
+            # Technical indicators
+            if len(close_prices) >= 20:
+                sma_20 = close_prices.rolling(20).mean()
+                features.append(close_prices.iloc[-1] / sma_20.iloc[-1] if sma_20.iloc[-1] > 0 else 1)
+            else:
+                features.append(1.0)
+            
+            # Trend features
+            if len(close_prices) >= 10:
+                trend_strength = (close_prices.iloc[-1] - close_prices.iloc[-10]) / close_prices.iloc[-10]
+                features.append(trend_strength)
+            else:
+                features.append(0.0)
+            
+            # Ensure we have a consistent number of features
+            while len(features) < 12:
+                features.append(0.0)
+            
+            return np.array([features[:12]])  # Limit to 12 features
+            
+        except Exception as e:
+            logger.error(f"Error engineering features: {e}")
+            return np.array([[0.5] * 12])
+
+class PatternDetector:
+    def __init__(self):
+        self.name = "PatternDetector"
+    
+    def detect_all_patterns(self, market_data: pd.DataFrame) -> Dict:
+        """Detect chart patterns in market data"""
+        try:
+            patterns = {
+                'strong_patterns': [],
+                'weak_patterns': []
+            }
+            
+            if len(market_data) < 20:
+                return patterns
+            
+            close_prices = market_data['close']
+            
+            # Simple trend detection
+            recent_trend = (close_prices.iloc[-1] - close_prices.iloc[-10]) / close_prices.iloc[-10]
+            
+            if recent_trend > 0.05:  # 5% uptrend
+                patterns['strong_patterns'].append('bullish_trend')
+            elif recent_trend < -0.05:  # 5% downtrend
+                patterns['strong_patterns'].append('bearish_trend')
+            
+            # Volume pattern (if available)
+            if 'volume' in market_data.columns:
+                volume_ratio = market_data['volume'].iloc[-1] / market_data['volume'].mean()
+                if volume_ratio > 2.0:
+                    patterns['strong_patterns'].append('volume_surge')
+            
+            # Volatility pattern
+            returns = close_prices.pct_change()
+            recent_vol = returns.tail(5).std()
+            historical_vol = returns.std()
+            
+            if recent_vol > historical_vol * 1.5:
+                patterns['strong_patterns'].append('volatility_expansion')
+            
+            return patterns
+            
+        except Exception as e:
+            logger.error(f"Error detecting patterns: {e}")
+            return {'strong_patterns': [], 'weak_patterns': []}
+
+class RegimeDetector:
+    def __init__(self):
+        self.name = "RegimeDetector"
+    
+    def detect_current_regime(self, market_data: pd.DataFrame, market_context: Dict) -> MarketRegime:
+        """Detect current market regime"""
+        try:
+            if len(market_data) < 20:
+                return MarketRegime.SIDEWAYS_RANGE
+            
+            close_prices = market_data['close']
+            returns = close_prices.pct_change()
+            
+            # Calculate trend strength
+            trend = (close_prices.iloc[-1] - close_prices.iloc[-20]) / close_prices.iloc[-20]
+            volatility = returns.std()
+            
+            # Regime classification
+            if trend > 0.1 and volatility < 0.02:  # Strong uptrend, low vol
+                return MarketRegime.BULL_TRENDING
+            elif trend < -0.1 and volatility < 0.02:  # Strong downtrend, low vol
+                return MarketRegime.BEAR_TRENDING
+            elif volatility > 0.05:  # High volatility
+                return MarketRegime.HIGH_VOLATILITY
+            elif volatility < 0.01:  # Low volatility
+                return MarketRegime.LOW_VOLATILITY
+            elif abs(trend) < 0.02:  # Sideways movement
+                return MarketRegime.SIDEWAYS_RANGE
+            else:
+                return MarketRegime.BREAKOUT_PENDING
+                
+        except Exception as e:
+            logger.error(f"Error detecting regime: {e}")
+            return MarketRegime.SIDEWAYS_RANGE
+
+class MetaLearner:
+    def __init__(self):
+        self.name = "MetaLearner"
+    
+    async def learn_from_outcome(self, symbol: str, prediction_record: Dict, actual_outcome: Dict):
+        """Learn from trade outcomes"""
+        try:
+            # This would implement learning from trade outcomes
+            # For now, just log the outcome
+            logger.info(f"Learning from {symbol} outcome: {actual_outcome}")
+        except Exception as e:
+            logger.error(f"Error in meta learning: {e}")
+
+class StrategyOptimizer:
+    def __init__(self):
+        self.name = "StrategyOptimizer"
+
+class MarketKnowledgeBase:
+    def __init__(self):
+        self.name = "MarketKnowledgeBase"
+
 class SeniorAnalystBrain:
     """
     The core AI brain that makes decisions like a senior analyst
@@ -79,7 +274,7 @@ class SeniorAnalystBrain:
     """
     
     def __init__(self):
-        self.name = "SeniorAnalystBrain"  # FIXED: Added missing name attribute
+        self.name = "SeniorAnalystBrain"
         self.models = {}
         self.scalers = {}
         self.feature_selectors = {}
@@ -118,14 +313,14 @@ class SeniorAnalystBrain:
         
         logger.info("🧠 Senior Analyst Brain initialized")
     
-    async def analyze_like_senior_analyst(self, symbol: str, market_data: pd.DataFrame, 
-                                        market_context: Dict) -> PredictionResult:
+    async def get_senior_analyst_recommendation(self, symbol: str, market_data: pd.DataFrame, 
+                                              market_context: Dict) -> Dict:
         """
         Main analysis function - thinks like a senior analyst
         Combines multiple approaches and synthesizes a final recommendation
         """
         try:
-            if len(market_data) < 100:
+            if len(market_data) < 20:
                 return self._create_low_confidence_prediction(symbol, "Insufficient data")
             
             # 1. FEATURE ENGINEERING (like analyst building their model)
@@ -151,11 +346,41 @@ class SeniorAnalystBrain:
             # 7. LEARN FROM THIS ANALYSIS (like analyst updating their mental models)
             await self._record_prediction_for_learning(symbol, final_prediction, features)
             
-            return final_prediction
+            return {
+                'symbol': symbol,
+                'analyst_grade': self._convert_to_analyst_grade(final_prediction),
+                'confidence': final_prediction.confidence,
+                'expected_return': final_prediction.expected_return,
+                'time_horizon_minutes': final_prediction.time_horizon,
+                'reasoning': final_prediction.reasoning,
+                'risk_factors': final_prediction.risk_factors,
+                'supporting_patterns': final_prediction.supporting_patterns,
+                'market_regime': final_prediction.market_regime.value,
+                'feature_importance': final_prediction.feature_importance
+            }
             
         except Exception as e:
             logger.error(f"Senior analyst analysis failed for {symbol}: {e}")
-            return self._create_low_confidence_prediction(symbol, f"Analysis error: {e}")
+            return self._create_low_confidence_dict(symbol, f"Analysis error: {e}")
+    
+    def _convert_to_analyst_grade(self, prediction: PredictionResult) -> str:
+        """Convert prediction to analyst grade"""
+        if prediction.prediction == 1:
+            if prediction.confidence > 0.8:
+                return "STRONG_BUY"
+            elif prediction.confidence > 0.65:
+                return "BUY"
+            else:
+                return "WEAK_BUY"
+        elif prediction.prediction == -1:
+            if prediction.confidence > 0.8:
+                return "STRONG_SELL"
+            elif prediction.confidence > 0.65:
+                return "SELL"
+            else:
+                return "WEAK_SELL"
+        else:
+            return "HOLD"
     
     async def _get_ml_predictions(self, symbol: str, features: np.ndarray) -> Dict[str, float]:
         """Get predictions from all ML models"""
@@ -195,20 +420,19 @@ class SeniorAnalystBrain:
     def _rule_based_predictions(self, features: np.ndarray) -> Dict[str, float]:
         """Fallback rule-based predictions when ML not available"""
         try:
-            # Simple rule-based logic as fallback
-            # This assumes features are ordered: [price_features..., volume_features..., technical_indicators...]
-            
-            if len(features) < 10:
+            if len(features.flatten()) < 5:
                 return {'rule_based': 0.5}
             
+            feature_array = features.flatten()
+            
             # Price momentum (first few features)
-            price_momentum = np.mean(features[:3]) if len(features) >= 3 else 0
+            price_momentum = np.mean(feature_array[:3]) if len(feature_array) >= 3 else 0
             
             # Volume analysis
-            volume_score = np.mean(features[3:6]) if len(features) >= 6 else 0
+            volume_score = np.mean(feature_array[3:6]) if len(feature_array) >= 6 else 0
             
             # Technical indicators
-            technical_score = np.mean(features[6:]) if len(features) > 6 else 0
+            technical_score = np.mean(feature_array[6:]) if len(feature_array) > 6 else 0
             
             # Combine scores
             combined_score = (price_momentum * 0.4 + volume_score * 0.3 + technical_score * 0.3)
@@ -221,6 +445,51 @@ class SeniorAnalystBrain:
         except Exception as e:
             logger.error(f"Rule-based prediction failed: {e}")
             return {'rule_based': 0.5}
+    
+    def _assess_comprehensive_risk(self, symbol: str, market_data: pd.DataFrame, 
+                                 patterns: Dict, regime: MarketRegime) -> Dict:
+        """Comprehensive risk assessment like a senior analyst"""
+        try:
+            risk_factors = {}
+            
+            # 1. VOLATILITY RISK
+            returns = market_data['close'].pct_change().dropna()
+            volatility = returns.std() * np.sqrt(252)  # Annualized volatility
+            risk_factors['volatility_risk'] = min(volatility / 0.5, 1.0)  # Normalize to 0-1
+            
+            # 2. LIQUIDITY RISK
+            if 'volume' in market_data.columns:
+                avg_volume = market_data['volume'].mean()
+                recent_volume = market_data['volume'].tail(5).mean()
+                liquidity_ratio = recent_volume / avg_volume if avg_volume > 0 else 1
+                risk_factors['liquidity_risk'] = max(0, 1 - liquidity_ratio)
+            else:
+                risk_factors['liquidity_risk'] = 0.3  # Default moderate risk
+            
+            # 3. TECHNICAL RISK
+            weak_patterns = patterns.get('weak_patterns', [])
+            risk_factors['technical_risk'] = len(weak_patterns) * 0.2
+            
+            # 4. REGIME RISK
+            regime_risks = {
+                MarketRegime.HIGH_VOLATILITY: 0.8,
+                MarketRegime.BEAR_TRENDING: 0.6,
+                MarketRegime.BREAKOUT_PENDING: 0.4,
+                MarketRegime.SIDEWAYS_RANGE: 0.3,
+                MarketRegime.LOW_VOLATILITY: 0.2,
+                MarketRegime.BULL_TRENDING: 0.1
+            }
+            risk_factors['regime_risk'] = regime_risks.get(regime, 0.5)
+            
+            # 5. OVERALL RISK SCORE
+            overall_risk = np.mean(list(risk_factors.values()))
+            risk_factors['overall_risk'] = overall_risk
+            
+            return risk_factors
+            
+        except Exception as e:
+            logger.error(f"Risk assessment failed: {e}")
+            return {'overall_risk': 0.5}
     
     def _synthesize_senior_analyst_decision(self, symbol: str, ml_predictions: Dict, 
                                           patterns: Dict, regime: MarketRegime, 
@@ -263,7 +532,7 @@ class SeniorAnalystBrain:
                 pattern_score -= 0.1
                 reasoning.append(f"Concerning patterns: {', '.join(weak_patterns[:2])}")
             
-            # 3. REGIME-BASED ADJUSTMENTS (like senior analyst market awareness)
+            # 3. REGIME-BASED ADJUSTMENTS
             regime_adjustment = self._get_regime_adjustment(regime)
             
             if regime == MarketRegime.BULL_TRENDING:
@@ -272,13 +541,13 @@ class SeniorAnalystBrain:
                 reasoning.append("High volatility regime - increased caution")
                 risk_factors.append("High market volatility")
             
-            # 4. RISK INTEGRATION (like senior analyst risk management)
+            # 4. RISK INTEGRATION
             risk_score = risk_analysis.get('overall_risk', 0.5)
             if risk_score > 0.7:
                 risk_factors.append("High individual security risk")
                 reasoning.append("Elevated risk profile requires position size reduction")
             
-            # 5. FINAL SYNTHESIS (the "senior analyst moment")
+            # 5. FINAL SYNTHESIS
             base_confidence = ml_consensus
             
             # Adjust based on pattern strength
@@ -295,7 +564,7 @@ class SeniorAnalystBrain:
             
             final_confidence = max(0.1, min(0.95, base_confidence + confidence_adj))
             
-            # DECISION LOGIC (like senior analyst decision framework)
+            # DECISION LOGIC
             if final_confidence > 0.75:
                 prediction = 1  # Strong buy
                 reasoning.append("High confidence bullish signal")
@@ -312,13 +581,13 @@ class SeniorAnalystBrain:
                 prediction = 0  # Hold
                 reasoning.append("Neutral stance - insufficient conviction")
             
-            # EXPECTED RETURN CALCULATION (like analyst price targets)
+            # EXPECTED RETURN CALCULATION
             expected_return = self._calculate_expected_return(final_confidence, prediction, regime, risk_score)
             
-            # TIME HORIZON (like analyst recommendations)
+            # TIME HORIZON
             time_horizon = self._determine_time_horizon(patterns, regime, final_confidence)
             
-            # FEATURE IMPORTANCE (like analyst highlighting key factors)
+            # FEATURE IMPORTANCE
             feature_importance = self._calculate_feature_importance(features, final_confidence)
             
             return PredictionResult(
@@ -415,9 +684,8 @@ class SeniorAnalystBrain:
             return 240  # Default 4 hours
     
     def _calculate_feature_importance(self, features: np.ndarray, confidence: float) -> Dict[str, float]:
-        """Calculate which features drove the decision (like analyst explaining their thesis)"""
+        """Calculate which features drove the decision"""
         try:
-            # This is simplified - in reality would come from trained models
             feature_names = [
                 'price_momentum', 'volume_surge', 'rsi_signal', 'macd_signal',
                 'bollinger_position', 'support_resistance', 'trend_strength',
@@ -426,11 +694,12 @@ class SeniorAnalystBrain:
             
             # Create mock importance scores based on feature values
             importances = {}
+            feature_array = features.flatten()
             
             for i, name in enumerate(feature_names):
-                if i < len(features):
+                if i < len(feature_array):
                     # Higher absolute values = more important
-                    importance = min(abs(features[i]) * confidence, 1.0)
+                    importance = min(abs(feature_array[i]) * confidence, 1.0)
                     importances[name] = importance
                 else:
                     importances[name] = 0.0
@@ -442,7 +711,7 @@ class SeniorAnalystBrain:
             return {'analysis_error': 1.0}
     
     async def _record_prediction_for_learning(self, symbol: str, prediction: PredictionResult, features: np.ndarray):
-        """Record prediction for future learning (like analyst tracking their calls)"""
+        """Record prediction for future learning"""
         try:
             tracker = self.performance_trackers[symbol]
             
@@ -465,13 +734,12 @@ class SeniorAnalystBrain:
             logger.error(f"Failed to record prediction for learning: {e}")
     
     async def _track_prediction_outcome(self, symbol: str, prediction_record: Dict):
-        """Track prediction outcomes for learning (like analyst reviewing their calls)"""
+        """Track prediction outcomes for learning"""
         try:
             # Wait for the prediction time horizon to pass
             await asyncio.sleep(prediction_record.get('time_horizon', 240) * 60)  # Convert to seconds
             
             # Get actual outcome (this would get real market data)
-            # For now, simulate outcome tracking
             actual_outcome = await self._get_actual_outcome(symbol, prediction_record)
             
             # Record the outcome for learning
@@ -550,10 +818,10 @@ class SeniorAnalystBrain:
         except Exception as e:
             logger.error(f"Failed to update ensemble weights: {e}")
     
-    async def train_on_historical_data(self, symbol: str, historical_data: pd.DataFrame):
+    async def initialize_for_symbol(self, symbol: str, historical_data: pd.DataFrame):
         """Train ML models on historical data (like analyst studying market history)"""
         try:
-            if not ML_AVAILABLE or len(historical_data) < 500:
+            if not ML_AVAILABLE or len(historical_data) < 100:
                 logger.warning(f"Skipping ML training for {symbol} - insufficient data or ML unavailable")
                 return False
             
@@ -566,7 +834,7 @@ class SeniorAnalystBrain:
                 # 2. CREATE LABELS (what would a senior analyst have done?)
                 labels = self._create_training_labels(historical_data)
                 
-                if len(features) != len(labels) or len(features) < 100:
+                if len(features) != len(labels) or len(features) < 50:
                     logger.warning(f"Insufficient training data for {symbol}")
                     return False
                 
@@ -585,7 +853,7 @@ class SeniorAnalystBrain:
                 
                 # Random Forest (captures non-linear patterns)
                 rf_model = RandomForestClassifier(
-                    n_estimators=200, max_depth=15, random_state=42,
+                    n_estimators=100, max_depth=10, random_state=42,
                     class_weight='balanced', n_jobs=-1
                 )
                 rf_model.fit(X_train_scaled, y_train)
@@ -593,28 +861,24 @@ class SeniorAnalystBrain:
                 
                 # Gradient Boosting (sequential learning)
                 gb_model = GradientBoostingClassifier(
-                    n_estimators=150, max_depth=8, learning_rate=0.1, random_state=42
+                    n_estimators=100, max_depth=6, learning_rate=0.1, random_state=42
                 )
                 gb_model.fit(X_train_scaled, y_train)
                 models['gradient_boost'] = gb_model
                 
                 # Neural Network (complex pattern recognition)
                 nn_model = MLPClassifier(
-                    hidden_layer_sizes=(100, 50, 25), max_iter=500, random_state=42,
+                    hidden_layer_sizes=(50, 25), max_iter=300, random_state=42,
                     alpha=0.01, learning_rate='adaptive'
                 )
                 nn_model.fit(X_train_scaled, y_train)
                 models['neural_network'] = nn_model
                 
                 # 6. EVALUATE MODELS
-                train_accuracies = {}
                 test_accuracies = {}
                 
                 for name, model in models.items():
-                    train_pred = model.predict(X_train_scaled)
                     test_pred = model.predict(X_test_scaled)
-                    
-                    train_accuracies[name] = accuracy_score(y_train, train_pred)
                     test_accuracies[name] = accuracy_score(y_test, test_pred)
                 
                 # 7. STORE MODELS
@@ -656,57 +920,108 @@ class SeniorAnalystBrain:
                 if return_pct > 0.02:  # 2% gain
                     labels.append(1)  # Buy signal
                 elif return_pct < -0.02:  # 2% loss
-                    labels.append(-1)  # Sell signal
+                    labels.append(0)  # Sell signal (using 0 instead of -1 for binary classification)
                 else:
                     labels.append(0)  # Hold signal
             
-            # Convert to binary for now (buy/not buy)
-            binary_labels = [1 if label == 1 else 0 for label in labels]
-            
-            return np.array(binary_labels)
+            return np.array(labels)
             
         except Exception as e:
             logger.error(f"Failed to create training labels: {e}")
             return np.array([])
     
-    def _assess_comprehensive_risk(self, symbol: str, market_data: pd.DataFrame, 
-                                 patterns: Dict, regime: MarketRegime) -> Dict:
-        """Comprehensive risk assessment like a senior analyst"""
+    def _create_low_confidence_prediction(self, symbol: str, reason: str) -> PredictionResult:
+        """Create a low confidence prediction when analysis fails"""
+        return PredictionResult(
+            symbol=symbol,
+            prediction=0,  # Hold
+            confidence=0.1,
+            expected_return=0.0,
+            time_horizon=240,
+            reasoning=[reason],
+            risk_factors=[reason],
+            supporting_patterns=[],
+            market_regime=MarketRegime.SIDEWAYS_RANGE,
+            feature_importance={}
+        )
+    
+    def _create_low_confidence_dict(self, symbol: str, reason: str) -> Dict:
+        """Create a low confidence dict when analysis fails"""
+        return {
+            'symbol': symbol,
+            'analyst_grade': 'HOLD',
+            'confidence': 0.1,
+            'expected_return': 0.0,
+            'time_horizon_minutes': 240,
+            'reasoning': [reason],
+            'risk_factors': [reason],
+            'supporting_patterns': [],
+            'market_regime': 'sideways_range',
+            'feature_importance': {}
+        }
+    
+    async def learn_from_trade_outcome(self, symbol: str, trade_data: Dict):
+        """Learn from trade outcomes to improve future decisions"""
         try:
-            risk_factors = {}
+            # This would implement learning from actual trade results
+            # For now, just log the outcome
+            logger.info(f"Learning from trade outcome for {symbol}: {trade_data}")
+        except Exception as e:
+            logger.error(f"Error learning from trade outcome: {e}")
+    
+    def get_system_intelligence_report(self) -> Dict:
+        """Get intelligence report about the system's performance"""
+        try:
+            total_predictions = sum(len(tracker['predictions']) for tracker in self.performance_trackers.values())
+            total_outcomes = sum(len(tracker['outcomes']) for tracker in self.performance_trackers.values())
             
-            # 1. VOLATILITY RISK
-            returns = market_data['close'].pct_change().dropna()
-            volatility = returns.std() * np.sqrt(252 * 24 * 4)  # Annualized intraday vol
-            risk_factors['volatility_risk'] = min(volatility / 0.5, 1.0)  # Normalize to 0-1
+            if total_outcomes > 0:
+                # Calculate average accuracy across all symbols
+                accuracies = [tracker['accuracy'] for tracker in self.performance_trackers.values() if tracker['accuracy'] > 0]
+                avg_accuracy = np.mean(accuracies) if accuracies else 0.5
+            else:
+                avg_accuracy = 0.5
             
-            # 2. LIQUIDITY RISK
-            avg_volume = market_data['volume'].mean()
-            recent_volume = market_data['volume'].tail(20).mean()
-            liquidity_ratio = recent_volume / avg_volume if avg_volume > 0 else 1
-            risk_factors['liquidity_risk'] = max(0, 1 - liquidity_ratio)
+            # Determine intelligence level
+            if avg_accuracy > 0.8:
+                intelligence_level = "Expert"
+            elif avg_accuracy > 0.7:
+                intelligence_level = "Advanced"
+            elif avg_accuracy > 0.6:
+                intelligence_level = "Intermediate"
+            else:
+                intelligence_level = "Learning"
             
-            # 3. TECHNICAL RISK
-            weak_patterns = patterns.get('weak_patterns', [])
-            risk_factors['technical_risk'] = len(weak_patterns) * 0.2
+            # Determine system maturity
+            if total_predictions > 1000:
+                system_maturity = "Mature"
+            elif total_predictions > 500:
+                system_maturity = "Developing"
+            elif total_predictions > 100:
+                system_maturity = "Early"
+            else:
+                system_maturity = "Initial"
             
-            # 4. REGIME RISK
-            regime_risks = {
-                MarketRegime.HIGH_VOLATILITY: 0.8,
-                MarketRegime.BEAR_TRENDING: 0.6,
-                MarketRegime.BREAKOUT_PENDING: 0.4,
-                MarketRegime.SIDEWAYS_RANGE: 0.3,
-                MarketRegime.LOW_VOLATILITY: 0.2,
-                MarketRegime.BULL_TRENDING: 0.1
+            return {
+                'intelligence_level': intelligence_level,
+                'system_maturity': system_maturity,
+                'average_accuracy': avg_accuracy,
+                'total_predictions': total_predictions,
+                'total_outcomes': total_outcomes,
+                'symbols_analyzed': len(self.performance_trackers),
+                'ml_available': ML_AVAILABLE,
+                'is_trained': self.is_trained,
+                'ensemble_weights': self.ensemble_weights.copy()
             }
-            risk_factors['regime_risk'] = regime_risks.get(regime, 0.5)
-            
-            # 5. OVERALL RISK SCORE
-            overall_risk = np.mean(list(risk_factors.values()))
-            risk_factors['overall_risk'] = overall_risk
-            
-            return risk_factors
             
         except Exception as e:
-            logger.error(f"Risk assessment failed: {e}")
-            return {'overall
+            logger.error(f"Error generating intelligence report: {e}")
+            return {
+                'intelligence_level': 'Unknown',
+                'system_maturity': 'Unknown',
+                'average_accuracy': 0.5,
+                'error': str(e)
+            }
+
+# Create the correct class alias for the main application
+SeniorAnalystIntegration = SeniorAnalystBrain
