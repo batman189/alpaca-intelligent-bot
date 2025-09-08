@@ -19,6 +19,13 @@ from typing import Dict, List, Optional
 import warnings
 warnings.filterwarnings('ignore')
 
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # dotenv not available
+
 # Configure professional logging with fallback
 try:
     log_dir = 'logs'

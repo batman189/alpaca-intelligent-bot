@@ -241,7 +241,7 @@ class SeniorAnalystBrain:
     
     async def get_senior_analyst_recommendation(self, symbol: str, market_data: pd.DataFrame, 
                                               market_context: Dict) -> Dict:
-        """Main analysis function - thinks like a senior analyst"""
+        """Main analysis function - thinks like a senior analyst with news intelligence"""
         try:
             if len(market_data) < 20:
                 return self._create_low_confidence_dict(symbol, "Insufficient data")
@@ -255,15 +255,18 @@ class SeniorAnalystBrain:
             # Market regime analysis
             regime = self.regime_detector.detect_current_regime(market_data, market_context)
             
+            # NEWS INTELLIGENCE - Phase 1 Enhancement
+            news_analysis = await self._analyze_news_sentiment(symbol)
+            
             # ML model predictions
             ml_predictions = await self._get_ml_predictions(symbol, features)
             
             # Risk assessment
             risk_analysis = self._assess_comprehensive_risk(symbol, market_data, patterns, regime)
             
-            # Senior analyst synthesis
+            # Senior analyst synthesis with news intelligence
             final_prediction = self._synthesize_senior_analyst_decision(
-                symbol, ml_predictions, patterns, regime, risk_analysis, features
+                symbol, ml_predictions, patterns, regime, risk_analysis, features, news_analysis
             )
             
             # Record for learning
@@ -403,9 +406,47 @@ class SeniorAnalystBrain:
             logger.error(f"Risk assessment failed: {e}")
             return {'overall_risk': 0.5}
     
+    async def _analyze_news_sentiment(self, symbol: str) -> Optional[Dict]:
+        """
+        Analyze news sentiment for the symbol - Phase 1 Enhancement
+        """
+        try:
+            # Import news analyzer
+            from models.news_impact_analyzer import news_analyzer
+            
+            # Analyze recent news (4 hours back for high-frequency trading)
+            analyses = await news_analyzer.analyze_symbol_news(symbol, hours_back=4)
+            
+            if not analyses:
+                return None
+            
+            # Use the first (most relevant) analysis
+            analysis = analyses[0]
+            
+            logger.debug(f"📰 {symbol} News: {analysis.sentiment_score:.2f} sentiment, "
+                        f"{analysis.confidence:.1%} confidence, "
+                        f"category: {analysis.category}")
+            
+            return {
+                'sentiment_score': analysis.sentiment_score,
+                'confidence': analysis.confidence,
+                'impact_magnitude': analysis.impact_magnitude,
+                'category': analysis.category,
+                'keywords': analysis.keywords,
+                'time_horizon': analysis.time_horizon
+            }
+            
+        except ImportError:
+            logger.debug("News analyzer not available")
+            return None
+        except Exception as e:
+            logger.error(f"News analysis failed for {symbol}: {e}")
+            return None
+    
     def _synthesize_senior_analyst_decision(self, symbol: str, ml_predictions: Dict, 
                                           patterns: Dict, regime: MarketRegime, 
-                                          risk_analysis: Dict, features: np.ndarray) -> PredictionResult:
+                                          risk_analysis: Dict, features: np.ndarray,
+                                          news_analysis: Optional[Dict] = None) -> PredictionResult:
         """Synthesize all inputs like a senior analyst would"""
         try:
             reasoning = []
@@ -441,6 +482,34 @@ class SeniorAnalystBrain:
                 pattern_score -= 0.1
                 reasoning.append(f"Concerning patterns: {', '.join(weak_patterns[:2])}")
             
+            # NEWS INTELLIGENCE - Phase 1 Enhancement Integration
+            news_score = 0.5  # Neutral baseline
+            news_confidence_boost = 0.0
+            
+            if news_analysis:
+                sentiment = news_analysis['sentiment_score']
+                news_confidence = news_analysis['confidence']
+                impact_magnitude = news_analysis['impact_magnitude']
+                category = news_analysis['category']
+                
+                # Convert sentiment to score
+                if sentiment > 0.1:  # Positive news
+                    news_score = 0.5 + (sentiment * 0.4)  # 0.5 to 0.9
+                    reasoning.append(f"Positive {category} news sentiment ({sentiment:.2f})")
+                elif sentiment < -0.1:  # Negative news
+                    news_score = 0.5 + (sentiment * 0.4)  # 0.1 to 0.5
+                    reasoning.append(f"Negative {category} news sentiment ({sentiment:.2f})")
+                    risk_factors.append(f"Negative news sentiment in {category}")
+                
+                # High-impact news categories get more weight
+                if category in ['earnings', 'regulatory']:
+                    news_confidence_boost = news_confidence * 0.1  # Up to 10% confidence boost
+                    reasoning.append(f"High-impact {category} news detected")
+                
+                # Large predicted impact adjusts expectations
+                if impact_magnitude > 3.0:  # > 3% predicted impact
+                    reasoning.append(f"Significant price impact expected ({impact_magnitude:.1f}%)")
+                    
             # Regime adjustments
             regime_adjustment = self._get_regime_adjustment(regime)
             
@@ -456,12 +525,16 @@ class SeniorAnalystBrain:
                 risk_factors.append("High individual security risk")
                 reasoning.append("Elevated risk profile")
             
-            # Final synthesis
+            # Final synthesis with news intelligence
             base_confidence = ml_consensus
             confidence_adj = (pattern_score - 0.5) * 0.3
             confidence_adj += (ml_agreement - 0.5) * 0.2
             confidence_adj += regime_adjustment * 0.1
             confidence_adj -= max(0, risk_score - 0.5) * 0.3
+            
+            # Add NEWS INTELLIGENCE to confidence calculation
+            confidence_adj += (news_score - 0.5) * 0.2  # News can add/subtract up to 8% confidence
+            confidence_adj += news_confidence_boost  # High-impact news categories boost confidence
             
             final_confidence = max(0.1, min(0.95, base_confidence + confidence_adj))
             
