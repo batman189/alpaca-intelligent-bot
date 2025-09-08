@@ -818,12 +818,12 @@ class SeniorAnalystBrain:
                     future_price = close_prices.iloc[i + lookhead_periods]
                     return_pct = (future_price - current_price) / current_price
                     
-                    if return_pct > 0.02:  # 2% gain
+                    if return_pct > 0.015:  # 1.5% gain - more inclusive
                         labels_list.append(1)  # Buy signal
-                    elif return_pct < -0.02:  # 2% loss
+                    elif return_pct < -0.015:  # 1.5% loss - more inclusive
                         labels_list.append(0)  # Sell signal  
                     else:
-                        labels_list.append(0)  # Hold signal
+                        labels_list.append(0)  # Hold signal (treated as sell for binary classification)
                 
                 features = np.array(features_list)
                 labels = np.array(labels_list)
@@ -835,6 +835,19 @@ class SeniorAnalystBrain:
                 if len(features) < 50:
                     logger.warning(f"Insufficient training data for {symbol} - only {len(features)} samples")
                     return False
+                
+                # Check class balance - ensure we have both buy and sell signals
+                unique_labels, label_counts = np.unique(labels, return_counts=True)
+                if len(unique_labels) < 2:
+                    logger.warning(f"Insufficient class diversity for {symbol}: only {unique_labels} classes found")
+                    return False
+                    
+                min_class_samples = min(label_counts)
+                if min_class_samples < 5:
+                    logger.warning(f"Insufficient samples for minority class in {symbol}: {min_class_samples} samples")
+                    return False
+                    
+                logger.info(f"🎯 Training data for {symbol}: {len(features)} samples, class distribution: {dict(zip(unique_labels, label_counts))}")
                 
                 # Train models
                 X_train, X_test, y_train, y_test = train_test_split(
@@ -903,9 +916,9 @@ class SeniorAnalystBrain:
                 
                 return_pct = (future_price - current_price) / current_price
                 
-                if return_pct > 0.02:  # 2% gain
+                if return_pct > 0.015:  # 1.5% gain - more inclusive
                     labels.append(1)  # Buy signal
-                elif return_pct < -0.02:  # 2% loss
+                elif return_pct < -0.015:  # 1.5% loss - more inclusive
                     labels.append(0)  # Sell signal
                 else:
                     labels.append(0)  # Hold signal
