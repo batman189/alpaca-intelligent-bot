@@ -1,31 +1,161 @@
-# Build tools - MUST be at the top
-setuptools>=65.0.0
-wheel>=0.37.0
-pip>=22.0.0
+# 🔧 Aggressive Render Fix - Try These Solutions in Order
 
-# Core trading and data libraries
-alpaca-trade-api>=3.1.1
-pandas>=1.5.0,<2.1.0
-numpy>=1.24.0,<1.26.0
-yfinance>=0.2.0
+## Solution 1: Force Python 3.11 + Updated Build Process
 
-# Technical analysis - using pandas-ta instead of TA-Lib for better Render compatibility
-pandas-ta>=0.3.14b0
+**Step 1:** Create/update `runtime.txt` in your project root:
+```
+python-3.11.9
+```
 
-# Machine learning (for Senior Analyst Brain)
-scikit-learn>=1.3.0,<1.4.0
-scipy>=1.10.0,<1.12.0
-joblib>=1.3.0
+**Step 2:** Create a `render.yaml` file in your project root:
+```yaml
+services:
+  - type: web
+    name: trading-bot
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: |
+      python -m pip install --upgrade pip
+      pip install setuptools==69.5.1 wheel==0.43.0
+      pip install -r requirements.txt
+    startCommand: python start.py
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PIP_NO_BUILD_ISOLATION
+        value: "false"
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+    autoDeploy: true
+```
 
-# Web framework
-flask>=2.3.0,<3.0.0
-gunicorn>=21.0.0
+**Step 3:** Update `requirements.txt`:
+```txt
+# Build essentials - specific versions
+setuptools==69.5.1
+wheel==0.43.0
+
+# Core packages with relaxed constraints
+flask==2.3.3
+gunicorn==21.2.0
+pandas==2.0.3
+numpy==1.24.4
+requests==2.31.0
+python-dotenv==1.0.0
+
+# Trading packages
+alpaca-trade-api==3.1.1
+yfinance==0.2.28
+
+# ML packages
+scikit-learn==1.3.2
+scipy==1.11.4
+joblib==1.3.2
+
+# Technical analysis
+pandas-ta==0.3.14b0
 
 # Utilities
-python-dotenv>=1.0.0
-requests>=2.31.0
-pytz>=2023.3
+python-dateutil==2.8.2
+pytz==2023.3
+six==1.16.0
+```
 
-# For better compatibility
-python-dateutil>=2.8.0
-six>=1.16.0
+## Solution 2: Minimal Requirements (If Solution 1 Fails)
+
+Replace your entire `requirements.txt` with this minimal version:
+
+```txt
+# Minimal working setup
+setuptools==69.5.1
+wheel==0.43.0
+flask==2.3.3
+gunicorn==21.2.0
+requests==2.31.0
+python-dotenv==1.0.0
+```
+
+Then once deployed successfully, gradually add back other packages one by one.
+
+## Solution 3: Custom Build Script
+
+Create a `build.sh` file in your project root:
+
+```bash
+#!/bin/bash
+set -e
+
+echo "🔧 Custom build script starting..."
+
+# Upgrade pip first
+python -m pip install --upgrade pip
+
+# Install build tools with specific versions
+pip install setuptools==69.5.1 wheel==0.43.0
+
+# Install packages one by one to catch issues
+pip install flask==2.3.3
+pip install gunicorn==21.2.0
+pip install requests==2.31.0
+pip install python-dotenv==1.0.0
+
+# Try to install data packages
+pip install pandas==2.0.3 || echo "⚠️ Pandas failed, continuing..."
+pip install numpy==1.24.4 || echo "⚠️ Numpy failed, continuing..."
+
+# Try trading packages
+pip install alpaca-trade-api==3.1.1 || echo "⚠️ Alpaca API failed, continuing..."
+
+echo "✅ Build script completed"
+```
+
+Then update your `render.yaml` to use it:
+```yaml
+buildCommand: chmod +x build.sh && ./build.sh
+```
+
+## Solution 4: Docker Approach (Most Reliable)
+
+Create a `Dockerfile` in your project root:
+
+```dockerfile
+FROM python:3.11.9-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --upgrade pip setuptools==69.5.1 wheel==0.43.0
+RUN pip install -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Expose port
+EXPOSE 10000
+
+# Start command
+CMD ["python", "start.py"]
+```
+
+Then change your Render service to use Docker runtime instead of Python.
+
+## Why This is Happening
+
+The issue is that Render's Python 3.13 environment has breaking changes with how packages build. Even with `runtime.txt`, some systems still default to 3.13.
+
+## Recommended Order:
+1. Try Solution 1 (runtime.txt + render.yaml + specific versions)
+2. If that fails, try Solution 2 (minimal requirements)
+3. If still failing, try Solution 4 (Docker approach)
+
+The Docker approach is most reliable because you have complete control over the environment.
