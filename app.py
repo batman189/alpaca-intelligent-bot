@@ -1001,6 +1001,19 @@ class ProfessionalTradingBot:
         .status-badge { display: inline-block; background: #10b981; color: white; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.8rem; font-weight: 500; }
         .refresh-btn { background: rgba(255, 255, 255, 0.2); border: none; color: white; padding: 0.75rem 1.5rem; border-radius: 10px; cursor: pointer; font-weight: 500; transition: all 0.3s ease; }
         .refresh-btn:hover { background: rgba(255, 255, 255, 0.3); }
+        .positions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
+        .position-card { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 1.5rem; transition: transform 0.3s ease; }
+        .position-card:hover { transform: translateY(-3px); background: rgba(255, 255, 255, 0.08); }
+        .position-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .position-symbol { font-size: 1.25rem; font-weight: 600; margin: 0; }
+        .position-change { font-weight: 600; font-size: 1rem; }
+        .positive { color: #10b981; }
+        .negative { color: #ef4444; }
+        .position-details { display: grid; gap: 0.5rem; }
+        .position-detail { display: flex; justify-content: space-between; align-items: center; }
+        .detail-label { opacity: 0.8; font-size: 0.9rem; }
+        .detail-value { font-weight: 500; }
+        .no-positions { text-align: center; padding: 2rem; opacity: 0.8; }
     </style>
 </head>
 <body>
@@ -1038,10 +1051,53 @@ class ProfessionalTradingBot:
             </div>
         </div>
         
-        <div class="chart-container">
+        <div class="chart-container" style="margin-bottom: 3rem;">
             <h3 style="margin-bottom: 1rem;">Portfolio Performance (30 Days)</h3>
             <canvas id="portfolioChart" width="400" height="200"></canvas>
             <button class="refresh-btn" onclick="location.reload()" style="margin-top: 1rem;">🔄 Refresh Data</button>
+        </div>
+        
+        <div class="chart-container">
+            <h3 style="margin-bottom: 1rem;">📋 Current Positions</h3>
+            {% if positions %}
+                <div class="positions-grid">
+                    {% for position in positions %}
+                    <div class="position-card">
+                        <div class="position-header">
+                            <h4 class="position-symbol">{{ position.symbol }}</h4>
+                            <span class="position-change {{ 'positive' if position.unrealized_pnl >= 0 else 'negative' }}">
+                                {{ '+' if position.unrealized_pnl >= 0 else '' }}${{ position.unrealized_pnl }}
+                            </span>
+                        </div>
+                        <div class="position-details">
+                            <div class="position-detail">
+                                <span class="detail-label">Quantity:</span>
+                                <span class="detail-value">{{ position.qty }} shares</span>
+                            </div>
+                            <div class="position-detail">
+                                <span class="detail-label">Avg Cost:</span>
+                                <span class="detail-value">${{ position.avg_cost }}</span>
+                            </div>
+                            <div class="position-detail">
+                                <span class="detail-label">Market Value:</span>
+                                <span class="detail-value">${{ position.market_value }}</span>
+                            </div>
+                            <div class="position-detail">
+                                <span class="detail-label">P&L %:</span>
+                                <span class="detail-value {{ 'positive' if position.unrealized_pnl_percent >= 0 else 'negative' }}">
+                                    {{ '+' if position.unrealized_pnl_percent >= 0 else '' }}{{ position.unrealized_pnl_percent }}%
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="no-positions">
+                    <p>📈 No positions currently held</p>
+                    <p style="opacity: 0.7; font-size: 0.9rem;">Positions will appear here when trades are executed</p>
+                </div>
+            {% endif %}
         </div>
     </div>
 
@@ -1092,6 +1148,34 @@ class ProfessionalTradingBot:
                 'sharpe_ratio': '2.14'
             }
             
+            # Sample positions data - would integrate with real bot
+            positions = [
+                {
+                    'symbol': 'AAPL',
+                    'qty': '50',
+                    'avg_cost': '185.25',
+                    'market_value': '9,450.00',
+                    'unrealized_pnl': '187.50',
+                    'unrealized_pnl_percent': '2.02'
+                },
+                {
+                    'symbol': 'MSFT',
+                    'qty': '25',
+                    'avg_cost': '412.80',
+                    'market_value': '10,175.00',
+                    'unrealized_pnl': '-145.00',
+                    'unrealized_pnl_percent': '-1.41'
+                },
+                {
+                    'symbol': 'SPY',
+                    'qty': '15',
+                    'avg_cost': '580.15',
+                    'market_value': '8,745.00',
+                    'unrealized_pnl': '42.75',
+                    'unrealized_pnl_percent': '0.49'
+                }
+            ]
+            
             # Generate sample chart data
             chart_labels = [(datetime.now() - timedelta(days=x)).strftime('%m/%d') for x in range(30, 0, -1)]
             portfolio_data = [2000]
@@ -1103,6 +1187,7 @@ class ProfessionalTradingBot:
                 SIMPLE_DASHBOARD,
                 current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 data=data,
+                positions=positions,
                 chart_labels=json.dumps(chart_labels),
                 portfolio_data=json.dumps(portfolio_data)
             )
