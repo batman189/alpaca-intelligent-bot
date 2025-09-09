@@ -1246,7 +1246,7 @@ def integrated_dashboard():
                 <div class="header">
                     <h1>Professional Trading Bot</h1>
                     <p>Enterprise Dashboard - <span class="status-badge">ONLINE</span></p>
-                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">{{ current_time }}</p>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">{{ current_time }} (v2.0)</p>
                 </div>
                 
                 <div class="metrics">
