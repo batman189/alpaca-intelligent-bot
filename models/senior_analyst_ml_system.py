@@ -838,6 +838,11 @@ class SeniorAnalystBrain:
                 
                 # Check class balance - ensure we have both buy and sell signals
                 unique_labels, label_counts = np.unique(labels, return_counts=True)
+                
+                # Debug logging for problematic symbols
+                if symbol in ['SPY', 'QQQ'] or len(unique_labels) < 2:
+                    logger.info(f"🔍 Debug {symbol}: {len(labels)} labels, unique: {unique_labels}, counts: {label_counts}")
+                
                 if len(unique_labels) < 2:
                     logger.warning(f"Insufficient class diversity for {symbol}: only {unique_labels} classes found")
                     return False
@@ -918,9 +923,9 @@ class SeniorAnalystBrain:
                 return_pct = (future_price - current_price) / current_price
                 return_percentages.append(return_pct)
                 
-                if return_pct > 0.005:  # 0.5% gain - even more inclusive for better class balance
+                if return_pct > 0.005:  # 0.5% gain - balanced threshold
                     labels.append(2)  # Buy signal
-                elif return_pct < -0.005:  # 0.5% loss - even more inclusive for better class balance
+                elif return_pct < -0.005:  # 0.5% loss - balanced threshold
                     labels.append(0)  # Sell signal
                 else:
                     labels.append(1)  # Hold signal
