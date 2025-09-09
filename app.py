@@ -920,34 +920,40 @@ class ProfessionalTradingBot:
             import time
             
             def run_dashboard():
-                """Run dashboard in background thread"""
+                """Setup dashboard integration"""
                 try:
-                    # Start the professional dashboard
-                    logger.info("🌐 Starting web dashboard...")
-                    dashboard_process = subprocess.Popen([
-                        sys.executable, 'professional_dashboard.py'
-                    ], cwd=os.getcwd(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    
-                    # Give the dashboard time to start
-                    time.sleep(3)
-                    
                     # Determine dashboard URL based on environment
                     if os.environ.get('RENDER'):
-                        # On Render, use the service URL
-                        dashboard_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')}"
+                        # On Render, integrate dashboard into main app
+                        dashboard_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')}/dashboard"
+                        logger.info("🌐 Dashboard integrated into main app for Render deployment")
+                        
+                        # Import and setup dashboard routes
+                        try:
+                            from professional_dashboard import setup_dashboard_routes
+                            setup_dashboard_routes(self.app)
+                            logger.info("✅ Dashboard routes integrated successfully")
+                        except Exception as e:
+                            logger.warning(f"Failed to integrate dashboard routes: {e}")
+                            
                     else:
-                        # Local development
+                        # Local development - run separate dashboard process
+                        logger.info("🌐 Starting separate dashboard process for local development...")
+                        dashboard_process = subprocess.Popen([
+                            sys.executable, 'professional_dashboard.py'
+                        ], cwd=os.getcwd(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        
+                        # Give the dashboard time to start
+                        time.sleep(3)
                         dashboard_url = "http://localhost:10000"
-                    
-                    logger.info(f"🔗 Dashboard available at: {dashboard_url}")
-                    
-                    # Only try to open browser locally, not on Render
-                    if not os.environ.get('RENDER'):
+                        
+                        # Try to open browser locally
                         try:
                             webbrowser.open(dashboard_url)
                         except:
                             pass  # Browser opening might fail in some environments
                     
+                    logger.info(f"🔗 Dashboard available at: {dashboard_url}")
                     logger.info("✅ Web dashboard started successfully")
                     logger.info("=" * 80)
                     logger.info(f"🌐 DASHBOARD URL: {dashboard_url}")

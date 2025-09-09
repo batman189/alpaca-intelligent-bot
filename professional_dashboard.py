@@ -1082,6 +1082,57 @@ def api_status():
         'timestamp': datetime.now().isoformat()
     })
 
+def setup_dashboard_routes(main_app):
+    """Setup dashboard routes in the main Flask app for Render deployment"""
+    
+    @main_app.route('/dashboard')
+    def integrated_dashboard():
+        """Professional enterprise dashboard integrated into main app"""
+        
+        # Sample data - would integrate with real bot
+        data = {
+            'equity': '2,150.75',
+            'buying_power': '4,301.50', 
+            'positions': '3',
+            'total_pnl': '150.75',
+            'win_rate': '68',
+            'sharpe_ratio': '2.14'
+        }
+        
+        # Generate sample chart data
+        chart_labels = [(datetime.now() - timedelta(days=x)).strftime('%m/%d') for x in range(30, 0, -1)]
+        portfolio_data = [2000]
+        for i in range(1, 30):
+            change = random.uniform(-20, 30)
+            portfolio_data.append(portfolio_data[-1] + change)
+        
+        return render_template_string(
+            PROFESSIONAL_DASHBOARD,
+            current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            data=data,
+            chart_labels=json.dumps(chart_labels),
+            portfolio_data=json.dumps(portfolio_data)
+        )
+    
+    @main_app.route('/dashboard/api/status')
+    def integrated_api_status():
+        """API status endpoint for integrated dashboard"""
+        return jsonify({
+            'status': 'online',
+            'version': '2.0.0',
+            'integrated': True,
+            'features': [
+                'Real-time updates',
+                'Professional UI/UX',
+                'Advanced charting',
+                'Enterprise-grade design',
+                'Mobile responsive',
+                'Render optimized'
+            ],
+            'bot_connected': BOT_AVAILABLE,
+            'timestamp': datetime.now().isoformat()
+        })
+
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 10000))
     
