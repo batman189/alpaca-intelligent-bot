@@ -155,23 +155,42 @@ class NewsImpactAnalyzer:
             ticker = yf.Ticker(symbol)
             
             # Get news data with proper error handling and retry logic
-            max_retries = 2
+            max_retries = 3
+            news_data = None
+            last_error = None
+            
             for attempt in range(max_retries):
                 try:
                     news_data = ticker.news
                     break
                 except Exception as news_fetch_error:
-                    if "Expecting value: line 1 column 1" in str(news_fetch_error):
+                    last_error = news_fetch_error
+                    error_str = str(news_fetch_error)
+                    
+                    # Handle common JSON parsing errors from Yahoo Finance
+                    if any(phrase in error_str for phrase in [
+                        "Expecting value: line 1 column 1",
+                        "JSONDecodeError",
+                        "Invalid control character",
+                        "Expecting",
+                        "Extra data"
+                    ]):
                         if attempt < max_retries - 1:
-                            self.logger.debug(f"JSON parsing error for {symbol} (attempt {attempt + 1}/{max_retries}): retrying after delay")
-                            await asyncio.sleep(1)  # Brief delay before retry
+                            self.logger.debug(f"Yahoo Finance API issue for {symbol} (attempt {attempt + 1}/{max_retries}), retrying...")
+                            await asyncio.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
                             continue
                         else:
-                            self.logger.warning(f"Failed to fetch news data for {symbol} after {max_retries} attempts due to persistent JSON parsing errors")
+                            # Only log as info, not warning, since this is a known Yahoo Finance issue
+                            self.logger.info(f"Yahoo Finance news unavailable for {symbol} (API returning invalid responses)")
                             return []
                     else:
                         self.logger.error(f"Failed to fetch news data for {symbol}: {news_fetch_error}")
                         return []
+            
+            # If we exited the loop without success
+            if news_data is None:
+                self.logger.info(f"Yahoo Finance news temporarily unavailable for {symbol}")
+                return []
             
             # Validate news_data
             if not news_data:
