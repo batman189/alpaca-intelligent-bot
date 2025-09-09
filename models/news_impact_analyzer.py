@@ -154,12 +154,24 @@ class NewsImpactAnalyzer:
         try:
             ticker = yf.Ticker(symbol)
             
-            # Get news data with proper error handling
-            try:
-                news_data = ticker.news
-            except Exception as news_fetch_error:
-                self.logger.error(f"Failed to fetch news data for {symbol}: {news_fetch_error}")
-                return []
+            # Get news data with proper error handling and retry logic
+            max_retries = 2
+            for attempt in range(max_retries):
+                try:
+                    news_data = ticker.news
+                    break
+                except Exception as news_fetch_error:
+                    if "Expecting value: line 1 column 1" in str(news_fetch_error):
+                        if attempt < max_retries - 1:
+                            self.logger.warning(f"JSON parsing error for {symbol} (attempt {attempt + 1}/{max_retries}): retrying after delay")
+                            await asyncio.sleep(1)  # Brief delay before retry
+                            continue
+                        else:
+                            self.logger.error(f"PERSISTENT FAILURE: Failed to fetch news data for {symbol} after {max_retries} attempts: {news_fetch_error}")
+                            return []
+                    else:
+                        self.logger.error(f"Failed to fetch news data for {symbol}: {news_fetch_error}")
+                        return []
             
             # Validate news_data
             if not news_data:

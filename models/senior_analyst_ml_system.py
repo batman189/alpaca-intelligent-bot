@@ -916,12 +916,12 @@ class SeniorAnalystBrain:
                 
                 return_pct = (future_price - current_price) / current_price
                 
-                if return_pct > 0.015:  # 1.5% gain - more inclusive
-                    labels.append(1)  # Buy signal
-                elif return_pct < -0.015:  # 1.5% loss - more inclusive
+                if return_pct > 0.008:  # 0.8% gain - more inclusive for better class balance
+                    labels.append(2)  # Buy signal
+                elif return_pct < -0.008:  # 0.8% loss - more inclusive for better class balance
                     labels.append(0)  # Sell signal
                 else:
-                    labels.append(0)  # Hold signal
+                    labels.append(1)  # Hold signal
             
             return np.array(labels)
             
