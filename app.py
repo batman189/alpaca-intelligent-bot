@@ -1150,49 +1150,67 @@ def test_dash():
 def integrated_dashboard():
     """Professional enterprise dashboard integrated into main app"""
     try:
-        import json
-        import random
-    
-    # Sample data - would integrate with real bot
-    data = {
-        'equity': '2,150.75',
-        'buying_power': '4,301.50', 
-        'positions': '3',
-        'total_pnl': '150.75',
-        'win_rate': '68',
-        'sharpe_ratio': '2.14'
-    }
-    
-    # Sample positions data - would integrate with real bot
-    positions = [
-        {
-            'symbol': 'AAPL',
-            'qty': '50',
-            'avg_cost': '185.25',
-            'market_value': '9,450.00',
-            'unrealized_pnl': 187.50,
-            'unrealized_pnl_percent': 2.02
-        },
-        {
-            'symbol': 'MSFT',
-            'qty': '25',
-            'avg_cost': '412.80',
-            'market_value': '10,175.00',
-            'unrealized_pnl': -145.00,
-            'unrealized_pnl_percent': -1.41
-        },
-        {
-            'symbol': 'SPY',
-            'qty': '15',
-            'avg_cost': '580.15',
-            'market_value': '8,745.00',
-            'unrealized_pnl': 42.75,
-            'unrealized_pnl_percent': 0.49
+        # Simple inline template to avoid issues with module-level template
+        simple_template = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Trading Bot Dashboard</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+                .container { max-width: 1200px; margin: 0 auto; }
+                .header { text-align: center; margin-bottom: 30px; background: white; padding: 20px; border-radius: 8px; }
+                .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
+                .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                .card h3 { margin-top: 0; color: #333; }
+                .metric-value { font-size: 24px; font-weight: bold; color: #2c3e50; }
+                .positive { color: #27ae60; }
+                .negative { color: #e74c3c; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Professional Trading Bot Dashboard</h1>
+                    <p>Last updated: {{ current_time }}</p>
+                </div>
+                
+                <div class="metrics">
+                    <div class="card">
+                        <h3>Portfolio Equity</h3>
+                        <div class="metric-value">${{ data.equity }}</div>
+                    </div>
+                    <div class="card">
+                        <h3>Active Positions</h3>
+                        <div class="metric-value">{{ data.positions }}</div>
+                    </div>
+                    <div class="card">
+                        <h3>Total P&L</h3>
+                        <div class="metric-value">${{ data.total_pnl }}</div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>Current Positions</h3>
+                    <p>{{ positions|length }} positions held</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        # Sample data
+        data = {
+            'equity': '2,150.75',
+            'positions': '3',
+            'total_pnl': '150.75'
         }
-    ]
-    
+        
+        # Simple positions data
+        positions = []
+        
         return render_template_string(
-            SIMPLE_DASHBOARD,
+            simple_template,
             current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             data=data,
             positions=positions
