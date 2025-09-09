@@ -355,7 +355,7 @@ class EnhancedDataClient:
             # Map timeframe to Alpaca format
             alpaca_timeframe = self._map_timeframe(timeframe)
             
-            # Calculate start date
+            # Calculate start date and format for Alpaca API
             if timeframe == '1Min':
                 start_date = datetime.now() - timedelta(days=5)
             elif timeframe in ['5Min', '15Min']:
@@ -365,12 +365,16 @@ class EnhancedDataClient:
             else:  # 1Day
                 start_date = datetime.now() - timedelta(days=365)
             
+            # Format dates for Alpaca API (ISO format)
+            start_str = start_date.strftime('%Y-%m-%d')
+            end_str = datetime.now().strftime('%Y-%m-%d')
+            
             # Fetch bars
             bars = self.api.get_bars(
                 symbol,
                 alpaca_timeframe,
-                start=start_date,
-                end=datetime.now(),
+                start=start_str,
+                end=end_str,
                 limit=self.MAX_CACHE_SIZE
             )
             
