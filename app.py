@@ -6,6 +6,7 @@ RENDER-OPTIMIZED VERSION
 """
 
 import os
+import sys
 import time
 import logging
 import threading
@@ -930,16 +931,27 @@ class ProfessionalTradingBot:
                     # Give the dashboard time to start
                     time.sleep(3)
                     
-                    # Open browser to dashboard URL
-                    dashboard_url = "http://localhost:10000"
-                    logger.info(f"🔗 Opening dashboard: {dashboard_url}")
-                    try:
-                        webbrowser.open(dashboard_url)
-                    except:
-                        pass  # Browser opening might fail in some environments
+                    # Determine dashboard URL based on environment
+                    if os.environ.get('RENDER'):
+                        # On Render, use the service URL
+                        dashboard_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')}"
+                    else:
+                        # Local development
+                        dashboard_url = "http://localhost:10000"
+                    
+                    logger.info(f"🔗 Dashboard available at: {dashboard_url}")
+                    
+                    # Only try to open browser locally, not on Render
+                    if not os.environ.get('RENDER'):
+                        try:
+                            webbrowser.open(dashboard_url)
+                        except:
+                            pass  # Browser opening might fail in some environments
                     
                     logger.info("✅ Web dashboard started successfully")
-                    logger.info(f"🌐 Dashboard URL: {dashboard_url}")
+                    logger.info("=" * 80)
+                    logger.info(f"🌐 DASHBOARD URL: {dashboard_url}")
+                    logger.info("=" * 80)
                     
                 except Exception as e:
                     logger.warning(f"Failed to start web dashboard: {e}")
