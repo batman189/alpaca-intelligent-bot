@@ -1078,7 +1078,7 @@ class ProfessionalTradingBot:
 </html>
 """
         
-        @self.app.route('/dashboard')
+        @app.route('/dashboard')
         def integrated_dashboard():
             """Professional enterprise dashboard integrated into main app"""
             
@@ -1107,7 +1107,7 @@ class ProfessionalTradingBot:
                 portfolio_data=json.dumps(portfolio_data)
             )
         
-        @self.app.route('/dashboard/api/status')
+        @app.route('/dashboard/api/status')
         def integrated_api_status():
             """API status endpoint for integrated dashboard"""
             return jsonify({
