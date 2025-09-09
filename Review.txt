@@ -1,0 +1,41 @@
+Lower model confidence threshold during momentum regimes (e.g., MIN_CONF_* = 0.50–0.55) so strong trend days aren’t auto-skipped.
+
+Remove or relax the Expected Return gate (e.g., MIN_EXPECTED_RETURN ≤ 0) so small/negative ER estimates don’t veto obvious trend entries.
+
+Make news optional (REQUIRE_NEWS=false) and, if news fetch fails, fall back to price-action rather than fundamentals.
+
+Add a momentum override: enter long if price breaks the prior-day high and holds above VWAP with rising 5-min EMA slope and a volume z-score ≥ 1–1.5.
+
+Add a pullback/retest play: if the initial breakout is missed, buy the first clean retest of VWAP/EMA20 with a bullish rejection candle.
+
+Ensure fast loop cadence (evaluate every 15–30 seconds) and enforce fresh data (FRESH_BAR_MAX_AGE_SEC ≤ 60) so signals aren’t stale.
+
+Verify timezone handling and trading window (explicit America/New_York 09:30–16:00); disable after-hours trading if your features weaken AH.
+
+Adjust risk caps so at least a minimum position is possible (allow fractionals for shares or ensure min options size is affordable for UNH).
+
+Loosen spread/slippage filters for liquid large caps; use marketable-limit orders (limit near mid ± small bps) to avoid non-fills.
+
+If OPTIONS_MODE is on, confirm options permissions and relax overly strict chain/greeks/liquidity filters; add an automatic fallback to shares if options fail.
+
+Add pyramiding/scaling rules: allow adding on higher highs or pullbacks while capping total risk and daily loss.
+
+Use dynamic stops: initial stop (e.g., below VWAP/last swing) + trailing stop; define partial take-profits to lock gains without exiting winners early.
+
+Log a per-ticker “skip reason” line each cycle (conf vs min_conf, exp_ret vs min_er, bar_age_sec, spread_bps, risk_ok, news_ok, vwap_ok) for instant diagnosis.
+
+Alert when zero opportunities are found for N consecutive cycles during high volatility or when a watchlist name moves > Y% intraday.
+
+Backtest and retune the thresholds on UNH-like names (high price, lower beta vs tech) to ensure capture of ≥ X% single-day rallies.
+
+Add regime detection (trend vs. chop) and lower gates only in “trend” regime; restore stricter gates in chop to avoid overtrading.
+
+Reduce debounce/cool-down periods between signals so a missed first entry doesn’t block valid follow-ups.
+
+Prioritize price-action in the decision stack (price-action → model → news add-on) so strong tape overrides weak/absent news.
+
+Add sector/market context filters that enable longs when XLV and SPY are supportive (relative strength > 0) to green-light entries on broad moves.
+
+Implement data-source fallbacks (retry/backoff on news; proceed with price-only mode) and surface a visible “degraded mode” flag in logs/metrics.
+
+Pre-open health checks: confirm real-time data entitlement, account trading_blocked=false, tickers loaded as expected, and loop cadence target met.
