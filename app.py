@@ -1346,6 +1346,9 @@ def integrated_dashboard():
                     'sharpe_ratio': f"{bot.performance_metrics.get('sharpe_ratio', 0):.2f}"
                 }
                 
+                # Debug info to show this path is being taken
+                data['equity'] = f"Live Account - Trades: {active_trades_count}/{completed_trades_count}"
+                
                 # Convert active trades to positions format
                 positions = []
                 if hasattr(bot, 'active_trades') and bot.active_trades:
