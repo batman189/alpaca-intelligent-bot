@@ -20,6 +20,7 @@ import websocket
 import json
 import queue
 import concurrent.futures
+import gc  # Phase 3 Memory Optimization
 
 @dataclass
 class MarketData:
@@ -81,7 +82,15 @@ class EnhancedDataClient:
     """
     
     SUPPORTED_TIMEFRAMES = ['1Min', '5Min', '15Min', '1Hour', '1Day']
-    MAX_CACHE_SIZE = 1000  # Maximum bars per timeframe
+    # Phase 3 Memory Optimization - Dynamic cache sizing based on timeframe
+    CACHE_SIZES = {
+        '1Min': 500,    # ~8 hours of 1-min data
+        '5Min': 300,    # ~1 day of 5-min data  
+        '15Min': 200,   # ~2 days of 15-min data
+        '1Hour': 168,   # ~1 week of hourly data
+        '1Day': 100     # ~3 months of daily data
+    }
+    MAX_CACHE_SIZE = 500  # Fallback for compatibility
     
     def __init__(self, api_key: str, secret_key: str, base_url: str = "https://paper-api.alpaca.markets"):
         self.api_key = api_key
@@ -250,9 +259,10 @@ class EnhancedDataClient:
                     }
                     df.loc[minute_timestamp] = new_row
                 
-                # Maintain cache size
-                if len(df) > self.MAX_CACHE_SIZE:
-                    df = df.tail(self.MAX_CACHE_SIZE)
+                # Phase 3 Memory Optimization - Use dynamic cache sizing
+                cache_size = self.CACHE_SIZES.get('1Min', self.MAX_CACHE_SIZE)
+                if len(df) > cache_size:
+                    df = df.tail(cache_size)
                     self.market_data[symbol].data['1Min'] = df
                 
                 # Update aggregated timeframes
@@ -276,7 +286,8 @@ class EnhancedDataClient:
                 'close': 'last',
                 'volume': 'sum'
             }).dropna()
-            self.market_data[symbol].data['5Min'] = five_min_data.tail(self.MAX_CACHE_SIZE)
+            cache_size = self.CACHE_SIZES.get('5Min', self.MAX_CACHE_SIZE)
+            self.market_data[symbol].data['5Min'] = five_min_data.tail(cache_size)
             
             # Update 15Min bars
             fifteen_min_data = minute_data.resample('15T').agg({
@@ -286,7 +297,8 @@ class EnhancedDataClient:
                 'close': 'last',
                 'volume': 'sum'
             }).dropna()
-            self.market_data[symbol].data['15Min'] = fifteen_min_data.tail(self.MAX_CACHE_SIZE)
+            cache_size = self.CACHE_SIZES.get('15Min', self.MAX_CACHE_SIZE)
+            self.market_data[symbol].data['15Min'] = fifteen_min_data.tail(cache_size)
             
             # Update 1Hour bars
             hour_data = minute_data.resample('1H').agg({
@@ -296,7 +308,8 @@ class EnhancedDataClient:
                 'close': 'last',
                 'volume': 'sum'
             }).dropna()
-            self.market_data[symbol].data['1Hour'] = hour_data.tail(self.MAX_CACHE_SIZE)
+            cache_size = self.CACHE_SIZES.get('1Hour', self.MAX_CACHE_SIZE)
+            self.market_data[symbol].data['1Hour'] = hour_data.tail(cache_size)
             
         except Exception as e:
             self.logger.error(f"Error updating aggregated timeframes: {e}")
@@ -540,13 +553,172 @@ class EnhancedDataClient:
         cache_total = self.data_stats['cache_hits'] + self.data_stats['cache_misses']
         cache_hit_rate = (self.data_stats['cache_hits'] / cache_total) if cache_total > 0 else 0
         
+        # Phase 3 Memory Optimization - Enhanced memory tracking
+        memory_by_timeframe = {}
+        total_memory = 0
+        total_rows = 0
+        
+        for symbol, symbol_data in self.market_data.items():
+            for timeframe, df in symbol_data.data.items():
+                if timeframe not in memory_by_timeframe:
+                    memory_by_timeframe[timeframe] = {'memory_mb': 0, 'rows': 0}
+                
+                df_memory = df.memory_usage(deep=True).sum()
+                memory_by_timeframe[timeframe]['memory_mb'] += df_memory / (1024 * 1024)
+                memory_by_timeframe[timeframe]['rows'] += len(df)
+                total_memory += df_memory
+                total_rows += len(df)
+        
         return {
             'cache_hit_rate': cache_hit_rate,
             'api_calls': self.data_stats['api_calls'],
             'cached_symbols': len(self.market_data),
             'active_streams': len(self.realtime_quotes),
-            'memory_usage_mb': sum(
-                sum(df.memory_usage(deep=True)) for symbol_data in self.market_data.values()
-                for df in symbol_data.data.values()
-            ) / (1024 * 1024)
+            'total_memory_mb': total_memory / (1024 * 1024),
+            'total_rows': total_rows,
+            'memory_by_timeframe': memory_by_timeframe,
+            'cache_efficiency': {tf: self.CACHE_SIZES.get(tf, self.MAX_CACHE_SIZE) for tf in self.SUPPORTED_TIMEFRAMES}
+        }
+    
+    def optimize_memory_usage(self) -> Dict:
+        """Phase 3 Memory Optimization - Optimize data types and cleanup memory"""
+        optimization_stats = {
+            'memory_before_mb': 0,
+            'memory_after_mb': 0,
+            'rows_optimized': 0,
+            'symbols_optimized': 0
+        }
+        
+        # Calculate initial memory usage
+        for symbol_data in self.market_data.values():
+            for df in symbol_data.data.values():
+                optimization_stats['memory_before_mb'] += df.memory_usage(deep=True).sum() / (1024 * 1024)
+        
+        # Optimize data types for each symbol
+        for symbol, symbol_data in self.market_data.items():
+            for timeframe, df in symbol_data.data.items():
+                if len(df) > 0:
+                    # Convert to more efficient data types
+                    original_dtypes = df.dtypes.copy()
+                    
+                    # Optimize numeric columns
+                    for col in ['open', 'high', 'low', 'close']:
+                        if col in df.columns:
+                            df[col] = pd.to_numeric(df[col], downcast='float')
+                    
+                    if 'volume' in df.columns:
+                        df['volume'] = pd.to_numeric(df['volume'], downcast='integer')
+                    
+                    # Update the dataframe
+                    symbol_data.data[timeframe] = df
+                    optimization_stats['rows_optimized'] += len(df)
+            
+            optimization_stats['symbols_optimized'] += 1
+        
+        # Force garbage collection
+        gc.collect()
+        
+        # Calculate final memory usage
+        for symbol_data in self.market_data.values():
+            for df in symbol_data.data.values():
+                optimization_stats['memory_after_mb'] += df.memory_usage(deep=True).sum() / (1024 * 1024)
+        
+        optimization_stats['memory_saved_mb'] = optimization_stats['memory_before_mb'] - optimization_stats['memory_after_mb']
+        optimization_stats['memory_saved_percent'] = (
+            (optimization_stats['memory_saved_mb'] / optimization_stats['memory_before_mb']) * 100 
+            if optimization_stats['memory_before_mb'] > 0 else 0
+        )
+        
+        self.logger.info(f"🚀 Phase 3 Memory Optimization: Saved {optimization_stats['memory_saved_mb']:.2f}MB "
+                        f"({optimization_stats['memory_saved_percent']:.1f}%) across {optimization_stats['symbols_optimized']} symbols")
+        
+        return optimization_stats
+    
+    async def warm_cache(self, symbols: List[str], priority_timeframes: List[str] = None) -> Dict:
+        """Phase 3 Caching Optimization - Intelligently warm cache for high-priority data"""
+        if priority_timeframes is None:
+            priority_timeframes = ['1Min', '5Min', '15Min']  # Most frequently used
+        
+        warming_stats = {
+            'symbols_warmed': 0,
+            'timeframes_warmed': 0,
+            'cache_hits_before': self.data_stats['cache_hits'],
+            'total_time_seconds': 0
+        }
+        
+        start_time = time.time()
+        self.logger.info(f"🔥 Phase 3: Warming cache for {len(symbols)} symbols, timeframes: {priority_timeframes}")
+        
+        # Warm cache in parallel for faster loading
+        tasks = []
+        for symbol in symbols:
+            for timeframe in priority_timeframes:
+                task = asyncio.create_task(self._fetch_historical_data(symbol, timeframe))
+                tasks.append(task)
+        
+        # Execute all cache warming tasks
+        await asyncio.gather(*tasks, return_exceptions=True)
+        
+        warming_stats['symbols_warmed'] = len(symbols)
+        warming_stats['timeframes_warmed'] = len(priority_timeframes) * len(symbols)
+        warming_stats['total_time_seconds'] = time.time() - start_time
+        warming_stats['cache_hits_after'] = self.data_stats['cache_hits']
+        warming_stats['cache_improvement'] = warming_stats['cache_hits_after'] - warming_stats['cache_hits_before']
+        
+        self.logger.info(f"🔥 Cache warmed in {warming_stats['total_time_seconds']:.2f}s - "
+                        f"{warming_stats['cache_improvement']} new cache entries")
+        
+        return warming_stats
+    
+    def get_cache_recommendations(self) -> Dict:
+        """Phase 3 Caching Optimization - Analyze cache usage patterns and provide recommendations"""
+        recommendations = {
+            'memory_optimizations': [],
+            'cache_adjustments': [],
+            'performance_tips': []
+        }
+        
+        total_memory = 0
+        timeframe_usage = {}
+        
+        for symbol, symbol_data in self.market_data.items():
+            for timeframe, df in symbol_data.data.items():
+                df_memory = df.memory_usage(deep=True).sum() / (1024 * 1024)
+                total_memory += df_memory
+                
+                if timeframe not in timeframe_usage:
+                    timeframe_usage[timeframe] = {'memory_mb': 0, 'symbols': 0, 'avg_rows': 0}
+                
+                timeframe_usage[timeframe]['memory_mb'] += df_memory
+                timeframe_usage[timeframe]['symbols'] += 1
+                timeframe_usage[timeframe]['avg_rows'] += len(df)
+        
+        # Calculate averages
+        for tf_data in timeframe_usage.values():
+            if tf_data['symbols'] > 0:
+                tf_data['avg_rows'] /= tf_data['symbols']
+        
+        # Generate recommendations
+        if total_memory > 100:  # Over 100MB
+            recommendations['memory_optimizations'].append("Consider running optimize_memory_usage() to reduce memory footprint")
+        
+        # Find underutilized timeframes
+        for timeframe, usage in timeframe_usage.items():
+            cache_size = self.CACHE_SIZES.get(timeframe, self.MAX_CACHE_SIZE)
+            if usage['avg_rows'] < cache_size * 0.5:
+                recommendations['cache_adjustments'].append(
+                    f"Reduce cache size for {timeframe} from {cache_size} to {int(usage['avg_rows'] * 1.2)}"
+                )
+        
+        # Performance tips
+        cache_total = self.data_stats['cache_hits'] + self.data_stats['cache_misses']
+        if cache_total > 0:
+            hit_rate = self.data_stats['cache_hits'] / cache_total
+            if hit_rate < 0.8:
+                recommendations['performance_tips'].append("Consider warming cache for frequently accessed symbols")
+        
+        return {
+            'total_memory_mb': total_memory,
+            'timeframe_usage': timeframe_usage,
+            'recommendations': recommendations
         }
