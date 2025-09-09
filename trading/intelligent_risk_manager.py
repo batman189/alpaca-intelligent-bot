@@ -109,7 +109,7 @@ class IntelligentRiskManager:
         Considers premium cost, Greeks, and risk parameters
         """
         try:
-            equity = float(account_info.get('equity', 100000))
+            equity = float(account_info.get('equity', 0))
             buying_power = float(account_info.get('buying_power', equity * 0.5))
             
             # Option contract details
@@ -159,7 +159,7 @@ class IntelligentRiskManager:
         Uses Kelly Criterion with risk adjustments
         """
         try:
-            equity = float(account_info.get('equity', 100000))
+            equity = float(account_info.get('equity', 0))
             buying_power = float(account_info.get('buying_power', equity * 0.5))
             
             symbol = opportunity.get('symbol', '')

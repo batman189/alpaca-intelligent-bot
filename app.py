@@ -482,7 +482,7 @@ class ProfessionalTradingBot:
             
             # Get account info with fallback
             try:
-                account_info = {'equity': 100000, 'buying_power': 50000}  # Default values
+                account_info = {'equity': 0, 'buying_power': 0}  # Will be replaced by real account data
                 current_positions = {}  # Default empty positions
                 
                 if hasattr(self.execution_client, 'get_account_info') and self.execution_client.name != "MockComponent":
@@ -1051,99 +1051,7 @@ class ProfessionalTradingBot:
 # Global bot instance
 bot = None
 
-# Dashboard HTML template - Simplified working version
-SIMPLE_DASHBOARD = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Professional Trading Bot - Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .header { text-align: center; margin-bottom: 30px; background: white; padding: 20px; border-radius: 8px; }
-        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .card h3 { margin-top: 0; color: #333; }
-        .metric-value { font-size: 24px; font-weight: bold; color: #2c3e50; }
-        .positions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
-        .position-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .positive { color: #27ae60; }
-        .negative { color: #e74c3c; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Professional Trading Bot Dashboard</h1>
-            <p>Last updated: {{ current_time }}</p>
-        </div>
-        
-        <div class="metrics">
-            <div class="card">
-                <h3>Portfolio Equity</h3>
-                <div class="metric-value">${{ data.equity }}</div>
-            </div>
-            <div class="card">
-                <h3>Buying Power</h3>
-                <div class="metric-value">${{ data.buying_power }}</div>
-            </div>
-            <div class="card">
-                <h3>Active Positions</h3>
-                <div class="metric-value">{{ data.positions }}</div>
-            </div>
-            <div class="card">
-                <h3>Total P&L</h3>
-                <div class="metric-value">${{ data.total_pnl }}</div>
-            </div>
-            <div class="card">
-                <h3>Win Rate</h3>
-                <div class="metric-value">{{ data.win_rate }}%</div>
-            </div>
-            <div class="card">
-                <h3>Sharpe Ratio</h3>
-                <div class="metric-value">{{ data.sharpe_ratio }}</div>
-            </div>
-        </div>
-        
-        <div class="card">
-            <h3>Current Positions</h3>
-            {% if positions %}
-                <div class="positions-grid">
-                    {% for position in positions %}
-                    <div class="position-card">
-                        <h4>{{ position.symbol }}</h4>
-                        <p>Quantity: {{ position.qty }} shares</p>
-                        <p>Avg Cost: ${{ position.avg_cost }}</p>
-                        <p>Market Value: ${{ position.market_value }}</p>
-                        <p class="{{ 'positive' if position.unrealized_pnl >= 0 else 'negative' }}">
-                            P&L: {{ '+' if position.unrealized_pnl >= 0 else '' }}${{ position.unrealized_pnl }} ({{ position.unrealized_pnl_percent }}%)
-                        </p>
-                    </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <p>No positions currently held</p>
-            {% endif %}
-        </div>
-    </div>
-    
-    <script>
-        // Auto-refresh every 30 seconds
-        setTimeout(() => location.reload(), 30000);
-    </script>
-</body>
-</html>
-"""
 
-# Test route for debugging
-@app.route('/test-dash')
-def test_dash():
-    try:
-        return render_template_string("""
-        <html><body><h1>Test Dashboard</h1><p>Time: {{ time }}</p></body></html>
-        """, time=datetime.now().strftime('%H:%M:%S'))
-    except Exception as e:
-        return f"Error in test-dash: {str(e)}"
 
 # Dashboard routes
 @app.route('/dashboard')
@@ -1246,7 +1154,7 @@ def integrated_dashboard():
                 <div class="header">
                     <h1>Professional Trading Bot</h1>
                     <p>Enterprise Dashboard - <span class="status-badge">ONLINE</span></p>
-                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">{{ current_time }} (v2.0)</p>
+                    <p style="font-size: 0.9rem; margin-top: 0.5rem;">{{ current_time }}</p>
                 </div>
                 
                 <div class="metrics">
@@ -1346,8 +1254,8 @@ def integrated_dashboard():
                     'sharpe_ratio': f"{bot.performance_metrics.get('sharpe_ratio', 0):.2f}"
                 }
                 
-                # Debug info to show this path is being taken
-                data['equity'] = f"Live Account - Trades: {active_trades_count}/{completed_trades_count}"
+                # Update equity to show live account status
+                data['equity'] = f"Live Account ({active_trades_count} active)"
                 
                 # Convert active trades to positions format
                 positions = []
@@ -1424,88 +1332,6 @@ def integrated_dashboard():
         </html>
         """
 
-# Alternative dashboard route for debugging
-@app.route('/dashboard-new')
-def dashboard_new():
-    """Professional enterprise dashboard integrated into main app"""
-    try:
-        # Simple inline template to avoid issues with module-level template
-        simple_template = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Trading Bot Dashboard</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-                .container { max-width: 1200px; margin: 0 auto; }
-                .header { text-align: center; margin-bottom: 30px; background: white; padding: 20px; border-radius: 8px; }
-                .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
-                .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-                .card h3 { margin-top: 0; color: #333; }
-                .metric-value { font-size: 24px; font-weight: bold; color: #2c3e50; }
-                .positive { color: #27ae60; }
-                .negative { color: #e74c3c; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>Professional Trading Bot Dashboard</h1>
-                    <p>Last updated: {{ current_time }}</p>
-                </div>
-                
-                <div class="metrics">
-                    <div class="card">
-                        <h3>Portfolio Equity</h3>
-                        <div class="metric-value">${{ data.equity }}</div>
-                    </div>
-                    <div class="card">
-                        <h3>Active Positions</h3>
-                        <div class="metric-value">{{ data.positions }}</div>
-                    </div>
-                    <div class="card">
-                        <h3>Total P&L</h3>
-                        <div class="metric-value">${{ data.total_pnl }}</div>
-                    </div>
-                </div>
-                
-                <div class="card">
-                    <h3>Current Positions</h3>
-                    <p>{{ positions|length }} positions held</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-        
-        # Sample data
-        data = {
-            'equity': '2,150.75',
-            'positions': '3',
-            'total_pnl': '150.75'
-        }
-        
-        # Simple positions data
-        positions = []
-        
-        return render_template_string(
-            simple_template,
-            current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            data=data,
-            positions=positions
-        )
-    except Exception as e:
-        import traceback
-        error_details = traceback.format_exc()
-        return f"""
-        <html>
-        <body>
-            <h1>Dashboard Error</h1>
-            <p>Error: {str(e)}</p>
-            <pre>{error_details}</pre>
-        </body>
-        </html>
-        """
 
 @app.route('/dashboard/api/status')
 def integrated_api_status():
