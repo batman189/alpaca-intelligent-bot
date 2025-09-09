@@ -13,7 +13,7 @@ import threading
 import asyncio
 import tempfile
 from datetime import datetime, timedelta
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template_string
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional
@@ -969,247 +969,8 @@ class ProfessionalTradingBot:
             logger.warning(f"Could not start web dashboard: {e}")
     
     def _setup_integrated_dashboard(self):
-        """Setup dashboard routes directly in main app for Render deployment"""
-        from flask import render_template_string, jsonify
-        import json
-        import random
-        from datetime import datetime, timedelta
-        
-        # Simplified dashboard HTML without any external dependencies
-        SIMPLE_DASHBOARD = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Professional Trading Bot - Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; color: white; }
-        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-        .header { text-align: center; margin-bottom: 3rem; }
-        .header h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; }
-        .header p { opacity: 0.9; font-size: 1.1rem; }
-        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 3rem; }
-        .metric-card { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 15px; padding: 2rem; border: 1px solid rgba(255, 255, 255, 0.2); transition: transform 0.3s ease; }
-        .metric-card:hover { transform: translateY(-5px); }
-        .metric-label { font-size: 0.9rem; opacity: 0.8; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px; }
-        .metric-value { font-size: 2rem; font-weight: 600; }
-        .chart-container { background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px); border-radius: 15px; padding: 2rem; border: 1px solid rgba(255, 255, 255, 0.2); }
-        .status-badge { display: inline-block; background: #10b981; color: white; padding: 0.25rem 0.75rem; border-radius: 20px; font-size: 0.8rem; font-weight: 500; }
-        .refresh-btn { background: rgba(255, 255, 255, 0.2); border: none; color: white; padding: 0.75rem 1.5rem; border-radius: 10px; cursor: pointer; font-weight: 500; transition: all 0.3s ease; }
-        .refresh-btn:hover { background: rgba(255, 255, 255, 0.3); }
-        .positions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; }
-        .position-card { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 1.5rem; transition: transform 0.3s ease; }
-        .position-card:hover { transform: translateY(-3px); background: rgba(255, 255, 255, 0.08); }
-        .position-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
-        .position-symbol { font-size: 1.25rem; font-weight: 600; margin: 0; }
-        .position-change { font-weight: 600; font-size: 1rem; }
-        .positive { color: #10b981; }
-        .negative { color: #ef4444; }
-        .position-details { display: grid; gap: 0.5rem; }
-        .position-detail { display: flex; justify-content: space-between; align-items: center; }
-        .detail-label { opacity: 0.8; font-size: 0.9rem; }
-        .detail-value { font-weight: 500; }
-        .no-positions { text-align: center; padding: 2rem; opacity: 0.8; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🚀 Professional Trading Bot</h1>
-            <p>Enterprise Dashboard - <span class="status-badge">ONLINE</span></p>
-            <p style="font-size: 0.9rem; margin-top: 0.5rem;">{{ current_time }}</p>
-        </div>
-        
-        <div class="metrics">
-            <div class="metric-card">
-                <div class="metric-label">Portfolio Equity</div>
-                <div class="metric-value">${{ data.equity }}</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Buying Power</div>
-                <div class="metric-value">${{ data.buying_power }}</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Active Positions</div>
-                <div class="metric-value">{{ data.positions }}</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Total P&L</div>
-                <div class="metric-value">${{ data.total_pnl }}</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Win Rate</div>
-                <div class="metric-value">{{ data.win_rate }}%</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Sharpe Ratio</div>
-                <div class="metric-value">{{ data.sharpe_ratio }}</div>
-            </div>
-        </div>
-        
-        <div class="chart-container" style="margin-bottom: 3rem;">
-            <h3 style="margin-bottom: 1rem;">Portfolio Performance (30 Days)</h3>
-            <canvas id="portfolioChart" width="400" height="200"></canvas>
-            <button class="refresh-btn" onclick="location.reload()" style="margin-top: 1rem;">🔄 Refresh Data</button>
-        </div>
-        
-        <div class="chart-container">
-            <h3 style="margin-bottom: 1rem;">📋 Current Positions</h3>
-            {% if positions %}
-                <div class="positions-grid">
-                    {% for position in positions %}
-                    <div class="position-card">
-                        <div class="position-header">
-                            <h4 class="position-symbol">{{ position.symbol }}</h4>
-                            <span class="position-change {{ 'positive' if position.unrealized_pnl >= 0 else 'negative' }}">
-                                {{ '+' if position.unrealized_pnl >= 0 else '' }}${{ position.unrealized_pnl }}
-                            </span>
-                        </div>
-                        <div class="position-details">
-                            <div class="position-detail">
-                                <span class="detail-label">Quantity:</span>
-                                <span class="detail-value">{{ position.qty }} shares</span>
-                            </div>
-                            <div class="position-detail">
-                                <span class="detail-label">Avg Cost:</span>
-                                <span class="detail-value">${{ position.avg_cost }}</span>
-                            </div>
-                            <div class="position-detail">
-                                <span class="detail-label">Market Value:</span>
-                                <span class="detail-value">${{ position.market_value }}</span>
-                            </div>
-                            <div class="position-detail">
-                                <span class="detail-label">P&L %:</span>
-                                <span class="detail-value {{ 'positive' if position.unrealized_pnl_percent >= 0 else 'negative' }}">
-                                    {{ '+' if position.unrealized_pnl_percent >= 0 else '' }}{{ position.unrealized_pnl_percent }}%
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="no-positions">
-                    <p>📈 No positions currently held</p>
-                    <p style="opacity: 0.7; font-size: 0.9rem;">Positions will appear here when trades are executed</p>
-                </div>
-            {% endif %}
-        </div>
-    </div>
-
-    <script>
-        const ctx = document.getElementById('portfolioChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: {{ chart_labels | safe }},
-                datasets: [{
-                    label: 'Portfolio Value',
-                    data: {{ portfolio_data | safe }},
-                    borderColor: '#10b981',
-                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { labels: { color: 'white' } } },
-                scales: {
-                    x: { ticks: { color: 'white' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
-                    y: { ticks: { color: 'white' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
-                }
-            }
-        });
-        
-        // Auto-refresh every 30 seconds
-        setTimeout(() => location.reload(), 30000);
-    </script>
-</body>
-</html>
-"""
-        
-        @app.route('/dashboard')
-        def integrated_dashboard():
-            """Professional enterprise dashboard integrated into main app"""
-            
-            # Sample data - would integrate with real bot
-            data = {
-                'equity': '2,150.75',
-                'buying_power': '4,301.50', 
-                'positions': '3',
-                'total_pnl': '150.75',
-                'win_rate': '68',
-                'sharpe_ratio': '2.14'
-            }
-            
-            # Sample positions data - would integrate with real bot
-            positions = [
-                {
-                    'symbol': 'AAPL',
-                    'qty': '50',
-                    'avg_cost': '185.25',
-                    'market_value': '9,450.00',
-                    'unrealized_pnl': '187.50',
-                    'unrealized_pnl_percent': '2.02'
-                },
-                {
-                    'symbol': 'MSFT',
-                    'qty': '25',
-                    'avg_cost': '412.80',
-                    'market_value': '10,175.00',
-                    'unrealized_pnl': '-145.00',
-                    'unrealized_pnl_percent': '-1.41'
-                },
-                {
-                    'symbol': 'SPY',
-                    'qty': '15',
-                    'avg_cost': '580.15',
-                    'market_value': '8,745.00',
-                    'unrealized_pnl': '42.75',
-                    'unrealized_pnl_percent': '0.49'
-                }
-            ]
-            
-            # Generate sample chart data
-            chart_labels = [(datetime.now() - timedelta(days=x)).strftime('%m/%d') for x in range(30, 0, -1)]
-            portfolio_data = [2000]
-            for i in range(1, 30):
-                change = random.uniform(-20, 30)
-                portfolio_data.append(portfolio_data[-1] + change)
-            
-            return render_template_string(
-                SIMPLE_DASHBOARD,
-                current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                data=data,
-                positions=positions,
-                chart_labels=json.dumps(chart_labels),
-                portfolio_data=json.dumps(portfolio_data)
-            )
-        
-        @app.route('/dashboard/api/status')
-        def integrated_api_status():
-            """API status endpoint for integrated dashboard"""
-            return jsonify({
-                'status': 'online',
-                'version': '2.0.0',
-                'integrated': True,
-                'features': [
-                    'Real-time updates',
-                    'Professional UI/UX',
-                    'Advanced charting',
-                    'Enterprise-grade design',
-                    'Mobile responsive',
-                    'Render optimized'
-                ],
-                'bot_connected': True,
-                'timestamp': datetime.now().isoformat()
-            })
+        """Dashboard routes are now registered at module level"""
+        logger.info("✅ Dashboard routes already registered at module level")
     
     async def run(self):
         """Main execution loop with Senior Analyst"""
@@ -1289,6 +1050,168 @@ class ProfessionalTradingBot:
 
 # Global bot instance
 bot = None
+
+# Dashboard HTML template - Simplified working version
+SIMPLE_DASHBOARD = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Professional Trading Bot - Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { text-align: center; margin-bottom: 30px; background: white; padding: 20px; border-radius: 8px; }
+        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .card h3 { margin-top: 0; color: #333; }
+        .metric-value { font-size: 24px; font-weight: bold; color: #2c3e50; }
+        .positions-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .position-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .positive { color: #27ae60; }
+        .negative { color: #e74c3c; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Professional Trading Bot Dashboard</h1>
+            <p>Last updated: {{ current_time }}</p>
+        </div>
+        
+        <div class="metrics">
+            <div class="card">
+                <h3>Portfolio Equity</h3>
+                <div class="metric-value">${{ data.equity }}</div>
+            </div>
+            <div class="card">
+                <h3>Buying Power</h3>
+                <div class="metric-value">${{ data.buying_power }}</div>
+            </div>
+            <div class="card">
+                <h3>Active Positions</h3>
+                <div class="metric-value">{{ data.positions }}</div>
+            </div>
+            <div class="card">
+                <h3>Total P&L</h3>
+                <div class="metric-value">${{ data.total_pnl }}</div>
+            </div>
+            <div class="card">
+                <h3>Win Rate</h3>
+                <div class="metric-value">{{ data.win_rate }}%</div>
+            </div>
+            <div class="card">
+                <h3>Sharpe Ratio</h3>
+                <div class="metric-value">{{ data.sharpe_ratio }}</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>Current Positions</h3>
+            {% if positions %}
+                <div class="positions-grid">
+                    {% for position in positions %}
+                    <div class="position-card">
+                        <h4>{{ position.symbol }}</h4>
+                        <p>Quantity: {{ position.qty }} shares</p>
+                        <p>Avg Cost: ${{ position.avg_cost }}</p>
+                        <p>Market Value: ${{ position.market_value }}</p>
+                        <p class="{{ 'positive' if position.unrealized_pnl >= 0 else 'negative' }}">
+                            P&L: {{ '+' if position.unrealized_pnl >= 0 else '' }}${{ position.unrealized_pnl }} ({{ position.unrealized_pnl_percent }}%)
+                        </p>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p>No positions currently held</p>
+            {% endif %}
+        </div>
+    </div>
+    
+    <script>
+        // Auto-refresh every 30 seconds
+        setTimeout(() => location.reload(), 30000);
+    </script>
+</body>
+</html>
+"""
+
+# Test route first
+@app.route('/test-dash')
+def test_dash():
+    return render_template_string("""
+    <html><body><h1>Test Dashboard</h1><p>Time: {{ time }}</p></body></html>
+    """, time=datetime.now().strftime('%H:%M:%S'))
+
+# Dashboard routes
+@app.route('/dashboard')
+def integrated_dashboard():
+    """Professional enterprise dashboard integrated into main app"""
+    import json
+    import random
+    
+    # Sample data - would integrate with real bot
+    data = {
+        'equity': '2,150.75',
+        'buying_power': '4,301.50', 
+        'positions': '3',
+        'total_pnl': '150.75',
+        'win_rate': '68',
+        'sharpe_ratio': '2.14'
+    }
+    
+    # Sample positions data - would integrate with real bot
+    positions = [
+        {
+            'symbol': 'AAPL',
+            'qty': '50',
+            'avg_cost': '185.25',
+            'market_value': '9,450.00',
+            'unrealized_pnl': '187.50',
+            'unrealized_pnl_percent': '2.02'
+        },
+        {
+            'symbol': 'MSFT',
+            'qty': '25',
+            'avg_cost': '412.80',
+            'market_value': '10,175.00',
+            'unrealized_pnl': '-145.00',
+            'unrealized_pnl_percent': '-1.41'
+        },
+        {
+            'symbol': 'SPY',
+            'qty': '15',
+            'avg_cost': '580.15',
+            'market_value': '8,745.00',
+            'unrealized_pnl': '42.75',
+            'unrealized_pnl_percent': '0.49'
+        }
+    ]
+    
+    return render_template_string(
+        SIMPLE_DASHBOARD,
+        current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        data=data,
+        positions=positions
+    )
+
+@app.route('/dashboard/api/status')
+def integrated_api_status():
+    """API status endpoint for integrated dashboard"""
+    return jsonify({
+        'status': 'online',
+        'version': '2.0.0',
+        'integrated': True,
+        'features': [
+            'Real-time updates',
+            'Professional UI/UX',
+            'Advanced charting',
+            'Enterprise-grade design',
+            'Mobile responsive',
+            'Render optimized'
+        ],
+        'bot_connected': True,
+        'timestamp': datetime.now().isoformat()
+    })
 
 # Flask routes for monitoring
 @app.route('/')
