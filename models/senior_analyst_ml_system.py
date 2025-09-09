@@ -773,9 +773,31 @@ class SeniorAnalystBrain:
                 returns = close_prices.pct_change().fillna(0)
                 
                 lookhead_periods = 16  # Same as in _create_training_labels
-                # Start from index 20 to ensure we have enough lookback data
+                
+                # First pass: collect all return percentages to calculate dynamic thresholds
+                return_percentages = []
+                valid_indices = []
+                
                 for i in range(20, len(historical_data) - lookhead_periods):
-                    
+                    current_price = close_prices.iloc[i]
+                    future_price = close_prices.iloc[i + lookhead_periods]
+                    return_pct = (future_price - current_price) / current_price
+                    return_percentages.append(return_pct)
+                    valid_indices.append(i)
+                
+                # Calculate dynamic thresholds using percentiles
+                if return_percentages:
+                    returns_array = np.array(return_percentages)
+                    upper_threshold = np.percentile(returns_array, 70)  # Top 30% as buy signals
+                    lower_threshold = np.percentile(returns_array, 30)  # Bottom 30% as sell signals
+                    logger.info(f"🎯 {symbol} dynamic thresholds - Upper: {upper_threshold:.4f}, Lower: {lower_threshold:.4f}")
+                else:
+                    upper_threshold = 0.005
+                    lower_threshold = -0.005
+                    logger.warning(f"No returns calculated for {symbol}, using fallback thresholds")
+                
+                # Second pass: create features and labels
+                for idx, i in enumerate(valid_indices):
                     # Generate features for this time point
                     feature_row = []
                     
@@ -813,17 +835,15 @@ class SeniorAnalystBrain:
                     
                     features_list.append(feature_row[:12])
                     
-                    # Create corresponding label for this time point
-                    current_price = close_prices.iloc[i]
-                    future_price = close_prices.iloc[i + lookhead_periods]
-                    return_pct = (future_price - current_price) / current_price
+                    # Create corresponding label using dynamic thresholds
+                    return_pct = return_percentages[idx]
                     
-                    if return_pct > 0.015:  # 1.5% gain - more inclusive
-                        labels_list.append(1)  # Buy signal
-                    elif return_pct < -0.015:  # 1.5% loss - more inclusive
+                    if return_pct > upper_threshold:
+                        labels_list.append(2)  # Buy signal
+                    elif return_pct < lower_threshold:
                         labels_list.append(0)  # Sell signal  
                     else:
-                        labels_list.append(0)  # Hold signal (treated as sell for binary classification)
+                        labels_list.append(1)  # Hold signal
                 
                 features = np.array(features_list)
                 labels = np.array(labels_list)
@@ -930,6 +950,9 @@ class SeniorAnalystBrain:
                 upper_threshold = np.percentile(returns_array, 70)  # Top 30% as buy signals
                 lower_threshold = np.percentile(returns_array, 30)  # Bottom 30% as sell signals
                 
+                logger.info(f"📊 Creating labels for {len(return_percentages)} samples with dynamic thresholds")
+                logger.info(f"📊 Upper: {upper_threshold:.4f}, Lower: {lower_threshold:.4f}")
+                
                 # Apply dynamic thresholds
                 for return_pct in return_percentages:
                     if return_pct > upper_threshold:
@@ -942,10 +965,11 @@ class SeniorAnalystBrain:
                 # Debug logging for class distribution
                 min_return = min(return_percentages)
                 max_return = max(return_percentages)
-                logger.debug(f"Return range: {min_return:.4f} to {max_return:.4f}")
-                logger.debug(f"Dynamic thresholds - Upper: {upper_threshold:.4f}, Lower: {lower_threshold:.4f}")
+                logger.info(f"Return range: {min_return:.4f} to {max_return:.4f}")
                 unique_labels, counts = np.unique(labels, return_counts=True)
-                logger.debug(f"Label distribution: {dict(zip(unique_labels, counts))}")
+                logger.info(f"Final label distribution: {dict(zip(unique_labels, counts))}")
+            else:
+                logger.warning("No return percentages calculated - insufficient data")
             
             return np.array(labels)
             
