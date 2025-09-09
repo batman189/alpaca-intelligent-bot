@@ -907,6 +907,7 @@ class SeniorAnalystBrain:
         """Create training labels"""
         try:
             labels = []
+            return_percentages = []
             
             lookhead_periods = 16  # 16 * 15min = 4 hours
             
@@ -915,13 +916,22 @@ class SeniorAnalystBrain:
                 future_price = historical_data['close'].iloc[i + lookhead_periods]
                 
                 return_pct = (future_price - current_price) / current_price
+                return_percentages.append(return_pct)
                 
-                if return_pct > 0.008:  # 0.8% gain - more inclusive for better class balance
+                if return_pct > 0.005:  # 0.5% gain - even more inclusive for better class balance
                     labels.append(2)  # Buy signal
-                elif return_pct < -0.008:  # 0.8% loss - more inclusive for better class balance
+                elif return_pct < -0.005:  # 0.5% loss - even more inclusive for better class balance
                     labels.append(0)  # Sell signal
                 else:
                     labels.append(1)  # Hold signal
+            
+            # Debug logging for class distribution
+            if return_percentages:
+                min_return = min(return_percentages)
+                max_return = max(return_percentages)
+                logger.debug(f"Return range: {min_return:.4f} to {max_return:.4f}")
+                unique_labels, counts = np.unique(labels, return_counts=True)
+                logger.debug(f"Label distribution: {dict(zip(unique_labels, counts))}")
             
             return np.array(labels)
             
