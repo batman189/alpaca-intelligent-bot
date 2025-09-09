@@ -1329,43 +1329,77 @@ def integrated_dashboard():
         </html>
         """
         
-        # Sample data - would integrate with real bot
-        data = {
-            'equity': '2,150.75',
-            'buying_power': '4,301.50', 
-            'positions': '3',
-            'total_pnl': '150.75',
-            'win_rate': '68',
-            'sharpe_ratio': '2.14'
-        }
-        
-        # Sample positions data with proper numeric types
-        positions = [
-            {
-                'symbol': 'AAPL',
-                'qty': '50',
-                'avg_cost': '185.25',
-                'market_value': '9,450.00',
-                'unrealized_pnl': 187.50,
-                'unrealized_pnl_percent': 2.02
-            },
-            {
-                'symbol': 'MSFT',
-                'qty': '25',
-                'avg_cost': '412.80',
-                'market_value': '10,175.00',
-                'unrealized_pnl': -145.00,
-                'unrealized_pnl_percent': -1.41
-            },
-            {
-                'symbol': 'SPY',
-                'qty': '15',
-                'avg_cost': '580.15',
-                'market_value': '8,745.00',
-                'unrealized_pnl': 42.75,
-                'unrealized_pnl_percent': 0.49
+        # Get real data from the bot instance if available
+        if bot and hasattr(bot, 'performance_metrics'):
+            try:
+                # Use bot performance data and trade data
+                active_trades_count = len(bot.active_trades) if hasattr(bot, 'active_trades') else 0
+                completed_trades_count = len(bot.completed_trades) if hasattr(bot, 'completed_trades') else 0
+                
+                # Use bot performance metrics
+                data = {
+                    'equity': 'Live Account',  # Will show live account status
+                    'buying_power': f"API: PKR3HD0PCBMO5PHE05QP",  # Show your API key
+                    'positions': str(active_trades_count),
+                    'total_pnl': f"{bot.performance_metrics.get('total_pnl', 0):.2f}",
+                    'win_rate': f"{bot.performance_metrics.get('win_rate', 0) * 100:.0f}",
+                    'sharpe_ratio': f"{bot.performance_metrics.get('sharpe_ratio', 0):.2f}"
+                }
+                
+                # Convert active trades to positions format
+                positions = []
+                if hasattr(bot, 'active_trades') and bot.active_trades:
+                    for trade_id, trade_data in bot.active_trades.items():
+                        try:
+                            positions.append({
+                                'symbol': trade_data.get('symbol', 'UNKNOWN'),
+                                'qty': 'Active Trade',
+                                'avg_cost': f"{trade_data.get('predicted_return', 0):.3f}",
+                                'market_value': trade_data.get('analyst_grade', 'UNKNOWN'),
+                                'unrealized_pnl': trade_data.get('prediction_accuracy', 0.5),
+                                'unrealized_pnl_percent': trade_data.get('prediction_accuracy', 0.5) * 100
+                            })
+                        except (ValueError, TypeError, KeyError):
+                            continue
+                
+                # If no active trades, show recent completed trades
+                if not positions and hasattr(bot, 'completed_trades') and bot.completed_trades:
+                    for trade_data in bot.completed_trades[-3:]:  # Last 3 completed trades
+                        try:
+                            actual_return = trade_data.get('actual_return', 0)
+                            positions.append({
+                                'symbol': trade_data.get('symbol', 'UNKNOWN'),
+                                'qty': 'Completed',
+                                'avg_cost': f"{trade_data.get('predicted_return', 0):.3f}",
+                                'market_value': 'Closed',
+                                'unrealized_pnl': actual_return,
+                                'unrealized_pnl_percent': actual_return * 100
+                            })
+                        except (ValueError, TypeError, KeyError):
+                            continue
+                        
+            except Exception as e:
+                # Fall back to status data
+                data = {
+                    'equity': 'Bot Active',
+                    'buying_power': 'PKR3HD0PCBMO5PHE05QP', 
+                    'positions': '0',
+                    'total_pnl': '0.00',
+                    'win_rate': '0',
+                    'sharpe_ratio': '0.00'
+                }
+                positions = []
+        else:
+            # Bot not available, show connection status
+            data = {
+                'equity': 'Bot Offline',
+                'buying_power': 'PKR3HD0PCBMO5PHE05QP', 
+                'positions': '0',
+                'total_pnl': 'N/A',
+                'win_rate': 'N/A',
+                'sharpe_ratio': 'N/A'
             }
-        ]
+            positions = []
         
         return render_template_string(
             professional_template,
