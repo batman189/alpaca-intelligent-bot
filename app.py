@@ -1145,9 +1145,9 @@ def test_dash():
     except Exception as e:
         return f"Error in test-dash: {str(e)}"
 
-# Dashboard routes
-@app.route('/dashboard')
-def integrated_dashboard():
+# Dashboard routes - using different route name for debugging
+@app.route('/dashboard-new')
+def dashboard_new():
     """Professional enterprise dashboard integrated into main app"""
     try:
         # Simple inline template to avoid issues with module-level template
