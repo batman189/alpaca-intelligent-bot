@@ -910,6 +910,47 @@ class ProfessionalTradingBot:
         except Exception as e:
             logger.error(f"Error updating performance metrics: {e}")
     
+    def start_web_dashboard(self):
+        """Start the web dashboard in a separate thread"""
+        try:
+            import subprocess
+            import threading
+            import webbrowser
+            import time
+            
+            def run_dashboard():
+                """Run dashboard in background thread"""
+                try:
+                    # Start the professional dashboard
+                    logger.info("🌐 Starting web dashboard...")
+                    dashboard_process = subprocess.Popen([
+                        sys.executable, 'professional_dashboard.py'
+                    ], cwd=os.getcwd(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    
+                    # Give the dashboard time to start
+                    time.sleep(3)
+                    
+                    # Open browser to dashboard URL
+                    dashboard_url = "http://localhost:10000"
+                    logger.info(f"🔗 Opening dashboard: {dashboard_url}")
+                    try:
+                        webbrowser.open(dashboard_url)
+                    except:
+                        pass  # Browser opening might fail in some environments
+                    
+                    logger.info("✅ Web dashboard started successfully")
+                    logger.info(f"🌐 Dashboard URL: {dashboard_url}")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to start web dashboard: {e}")
+            
+            # Start dashboard in background thread
+            dashboard_thread = threading.Thread(target=run_dashboard, daemon=True)
+            dashboard_thread.start()
+            
+        except Exception as e:
+            logger.warning(f"Could not start web dashboard: {e}")
+    
     async def run(self):
         """Main execution loop with Senior Analyst"""
         logger.info("🚀 Starting Professional Trading Bot with Senior Analyst")
@@ -918,6 +959,9 @@ class ProfessionalTradingBot:
         logger.info(f"🧠 Senior Analyst enabled: {self.config.ENABLE_SENIOR_ANALYST and SENIOR_ANALYST_AVAILABLE}")
         
         self.running = True
+        
+        # Auto-start web dashboard
+        self.start_web_dashboard()
         
         # Train the Senior Analyst first (if available)
         if self.senior_analyst and self.senior_analyst.name != "MockComponent":

@@ -163,11 +163,11 @@ class NewsImpactAnalyzer:
                 except Exception as news_fetch_error:
                     if "Expecting value: line 1 column 1" in str(news_fetch_error):
                         if attempt < max_retries - 1:
-                            self.logger.warning(f"JSON parsing error for {symbol} (attempt {attempt + 1}/{max_retries}): retrying after delay")
+                            self.logger.debug(f"JSON parsing error for {symbol} (attempt {attempt + 1}/{max_retries}): retrying after delay")
                             await asyncio.sleep(1)  # Brief delay before retry
                             continue
                         else:
-                            self.logger.error(f"PERSISTENT FAILURE: Failed to fetch news data for {symbol} after {max_retries} attempts: {news_fetch_error}")
+                            self.logger.warning(f"Failed to fetch news data for {symbol} after {max_retries} attempts due to persistent JSON parsing errors")
                             return []
                     else:
                         self.logger.error(f"Failed to fetch news data for {symbol}: {news_fetch_error}")

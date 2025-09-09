@@ -1083,7 +1083,7 @@ def api_status():
     })
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5003))
+    port = int(os.getenv('PORT', 10000))
     
     print("=" * 70)
     print("🚀 PROFESSIONAL TRADING BOT DASHBOARD - ENTERPRISE EDITION")
