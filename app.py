@@ -1166,24 +1166,24 @@ def integrated_dashboard():
             'qty': '50',
             'avg_cost': '185.25',
             'market_value': '9,450.00',
-            'unrealized_pnl': '187.50',
-            'unrealized_pnl_percent': '2.02'
+            'unrealized_pnl': 187.50,
+            'unrealized_pnl_percent': 2.02
         },
         {
             'symbol': 'MSFT',
             'qty': '25',
             'avg_cost': '412.80',
             'market_value': '10,175.00',
-            'unrealized_pnl': '-145.00',
-            'unrealized_pnl_percent': '-1.41'
+            'unrealized_pnl': -145.00,
+            'unrealized_pnl_percent': -1.41
         },
         {
             'symbol': 'SPY',
             'qty': '15',
             'avg_cost': '580.15',
             'market_value': '8,745.00',
-            'unrealized_pnl': '42.75',
-            'unrealized_pnl_percent': '0.49'
+            'unrealized_pnl': 42.75,
+            'unrealized_pnl_percent': 0.49
         }
     ]
     
