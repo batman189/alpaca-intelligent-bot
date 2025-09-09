@@ -1135,19 +1135,23 @@ SIMPLE_DASHBOARD = """
 </html>
 """
 
-# Test route first
+# Test route for debugging
 @app.route('/test-dash')
 def test_dash():
-    return render_template_string("""
-    <html><body><h1>Test Dashboard</h1><p>Time: {{ time }}</p></body></html>
-    """, time=datetime.now().strftime('%H:%M:%S'))
+    try:
+        return render_template_string("""
+        <html><body><h1>Test Dashboard</h1><p>Time: {{ time }}</p></body></html>
+        """, time=datetime.now().strftime('%H:%M:%S'))
+    except Exception as e:
+        return f"Error in test-dash: {str(e)}"
 
 # Dashboard routes
 @app.route('/dashboard')
 def integrated_dashboard():
     """Professional enterprise dashboard integrated into main app"""
-    import json
-    import random
+    try:
+        import json
+        import random
     
     # Sample data - would integrate with real bot
     data = {
@@ -1187,12 +1191,24 @@ def integrated_dashboard():
         }
     ]
     
-    return render_template_string(
-        SIMPLE_DASHBOARD,
-        current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        data=data,
-        positions=positions
-    )
+        return render_template_string(
+            SIMPLE_DASHBOARD,
+            current_time=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            data=data,
+            positions=positions
+        )
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        return f"""
+        <html>
+        <body>
+            <h1>Dashboard Error</h1>
+            <p>Error: {str(e)}</p>
+            <pre>{error_details}</pre>
+        </body>
+        </html>
+        """
 
 @app.route('/dashboard/api/status')
 def integrated_api_status():
