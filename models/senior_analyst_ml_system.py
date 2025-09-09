@@ -923,18 +923,27 @@ class SeniorAnalystBrain:
                 return_pct = (future_price - current_price) / current_price
                 return_percentages.append(return_pct)
                 
-                if return_pct > 0.005:  # 0.5% gain - balanced threshold
-                    labels.append(2)  # Buy signal
-                elif return_pct < -0.005:  # 0.5% loss - balanced threshold
-                    labels.append(0)  # Sell signal
-                else:
-                    labels.append(1)  # Hold signal
             
-            # Debug logging for class distribution
+            # Use percentile-based thresholds for balanced classes
             if return_percentages:
+                returns_array = np.array(return_percentages)
+                upper_threshold = np.percentile(returns_array, 70)  # Top 30% as buy signals
+                lower_threshold = np.percentile(returns_array, 30)  # Bottom 30% as sell signals
+                
+                # Apply dynamic thresholds
+                for return_pct in return_percentages:
+                    if return_pct > upper_threshold:
+                        labels.append(2)  # Buy signal
+                    elif return_pct < lower_threshold:
+                        labels.append(0)  # Sell signal
+                    else:
+                        labels.append(1)  # Hold signal
+                
+                # Debug logging for class distribution
                 min_return = min(return_percentages)
                 max_return = max(return_percentages)
                 logger.debug(f"Return range: {min_return:.4f} to {max_return:.4f}")
+                logger.debug(f"Dynamic thresholds - Upper: {upper_threshold:.4f}, Lower: {lower_threshold:.4f}")
                 unique_labels, counts = np.unique(labels, return_counts=True)
                 logger.debug(f"Label distribution: {dict(zip(unique_labels, counts))}")
             
