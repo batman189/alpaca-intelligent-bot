@@ -86,9 +86,9 @@ class NewsImpactAnalyzer:
             'news': 1.0
         }
         
-        self.logger.info("📰 News Impact Analyzer initialized")
+        self.logger.info("[NEWS] News Impact Analyzer initialized")
         if not TEXTBLOB_AVAILABLE:
-            self.logger.warning("⚠️ TextBlob not available - using basic sentiment analysis")
+            self.logger.warning("[WARN] TextBlob not available - using basic sentiment analysis")
     
     async def analyze_symbol_news(self, symbol: str, hours_back: int = 4) -> List[SentimentAnalysis]:
         """

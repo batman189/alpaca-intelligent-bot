@@ -18,18 +18,18 @@ try:
     import talib
     TALIB_AVAILABLE = True
     logger = logging.getLogger(__name__)
-    logger.info("✅ TA-Lib imported successfully")
+    logger.info("[OK] TA-Lib imported successfully")
 except ImportError:
     try:
         from utils.talib_fallback import *
         TALIB_AVAILABLE = False
         logger = logging.getLogger(__name__)
-        logger.info("✅ Using TA-Lib fallback functions")
+        logger.info("[OK] Using TA-Lib fallback functions")
     except ImportError:
         # If our fallback fails, use basic pandas
         TALIB_AVAILABLE = False
         logger = logging.getLogger(__name__)
-        logger.warning("⚠️ Using basic pandas for technical analysis")
+        logger.warning("[WARN] Using basic pandas for technical analysis")
 
 # ML imports with fallbacks
 try:
