@@ -27,21 +27,59 @@ try:
 except ImportError:
     pass  # dotenv not available
 
-# Configure professional logging with fallback
+# Configure professional logging with Unicode handling for Windows
+import io
+import sys
+
+# Create custom stream handler for Windows Unicode support
+class UnicodeStreamHandler(logging.StreamHandler):
+    def __init__(self, stream=None):
+        super().__init__(stream)
+        # Force UTF-8 encoding for console output on Windows
+        if hasattr(self.stream, 'buffer'):
+            self.stream = io.TextIOWrapper(self.stream.buffer, encoding='utf-8', errors='replace')
+    
+    def emit(self, record):
+        try:
+            # Replace Unicode emojis with ASCII equivalents in log messages
+            if hasattr(record, 'msg') and isinstance(record.msg, str):
+                record.msg = self._replace_unicode_emojis(record.msg)
+            super().emit(record)
+        except UnicodeEncodeError:
+            # Fallback: replace all non-ASCII characters
+            if hasattr(record, 'msg') and isinstance(record.msg, str):
+                record.msg = record.msg.encode('ascii', errors='replace').decode('ascii')
+            super().emit(record)
+    
+    def _replace_unicode_emojis(self, msg):
+        """Replace common Unicode emojis with ASCII equivalents"""
+        replacements = {
+            '✅': '[OK]', '❌': '[ERROR]', '⚠️': '[WARN]', '🚀': '[START]',
+            '🧠': '[BRAIN]', '📊': '[INFO]', '💰': '[MONEY]', '🔄': '[CYCLE]',
+            '🎯': '[TARGET]', '🌐': '[WEB]', '📈': '[CHART]', '💡': '[IDEA]',
+            '🤖': '[BOT]', '🎓': '[TRAIN]', '🔍': '[SEARCH]', '💼': '[TRADE]',
+            '📋': '[LIST]', '🌙': '[NIGHT]', '🛑': '[STOP]', '📰': '[NEWS]',
+            '🔗': '[LINK]', '💥': '[CRASH]', '📄': '[DOC]', '🎯': '[RANK]',
+            '🔄': '[REFRESH]', '📊': '[CHART]', '🧪': '[TEST]', '⚡': '[FAST]'
+        }
+        for emoji, replacement in replacements.items():
+            msg = msg.replace(emoji, replacement)
+        return msg
+
 try:
     log_dir = 'logs'
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, 'trading_bot.log')
     # Test if we can write to the log file
-    with open(log_file, 'a') as f:
+    with open(log_file, 'a', encoding='utf-8') as f:
         f.write('')
     log_handlers = [
-        logging.StreamHandler(),
-        logging.FileHandler(log_file)
+        UnicodeStreamHandler(),
+        logging.FileHandler(log_file, encoding='utf-8')
     ]
 except (OSError, PermissionError):
     # Fallback to console only if file logging fails
-    log_handlers = [logging.StreamHandler()]
+    log_handlers = [UnicodeStreamHandler()]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -128,117 +166,117 @@ def safe_import_components():
     try:
         from models.advanced_market_analyzer import AdvancedMarketAnalyzer
         components['AdvancedMarketAnalyzer'] = AdvancedMarketAnalyzer
-        logger.info("✅ AdvancedMarketAnalyzer imported")
+        logger.info("[OK] AdvancedMarketAnalyzer imported")
     except ImportError as e:
-        logger.warning(f"⚠️ AdvancedMarketAnalyzer import failed (ImportError): {e}")
+        logger.warning(f"[WARN] AdvancedMarketAnalyzer import failed (ImportError): {e}")
         components['AdvancedMarketAnalyzer'] = MockComponent
     except Exception as e:
-        logger.warning(f"⚠️ AdvancedMarketAnalyzer import failed (Other): {e}")
+        logger.warning(f"[WARN] AdvancedMarketAnalyzer import failed (Other): {e}")
         components['AdvancedMarketAnalyzer'] = MockComponent
     
     try:
         from data.data_client import EnhancedDataClient
         components['EnhancedDataClient'] = EnhancedDataClient
-        logger.info("✅ EnhancedDataClient imported")
+        logger.info("[OK] EnhancedDataClient imported")
     except Exception as e:
-        logger.warning(f"⚠️ EnhancedDataClient import failed: {e}")
+        logger.warning(f"[WARN] EnhancedDataClient import failed: {e}")
         components['EnhancedDataClient'] = MockComponent
     
     try:
         from trading.options_engine import ProfessionalOptionsEngine
         components['ProfessionalOptionsEngine'] = ProfessionalOptionsEngine
-        logger.info("✅ ProfessionalOptionsEngine imported")
+        logger.info("[OK] ProfessionalOptionsEngine imported")
     except Exception as e:
-        logger.warning(f"⚠️ ProfessionalOptionsEngine import failed: {e}")
+        logger.warning(f"[WARN] ProfessionalOptionsEngine import failed: {e}")
         components['ProfessionalOptionsEngine'] = MockComponent
     
     try:
         from trading.execution_client import AdvancedExecutionClient
         components['AdvancedExecutionClient'] = AdvancedExecutionClient
-        logger.info("✅ AdvancedExecutionClient imported")
+        logger.info("[OK] AdvancedExecutionClient imported")
     except Exception as e:
-        logger.warning(f"⚠️ AdvancedExecutionClient import failed: {e}")
+        logger.warning(f"[WARN] AdvancedExecutionClient import failed: {e}")
         components['AdvancedExecutionClient'] = MockComponent
     
     try:
         from trading.intelligent_risk_manager import IntelligentRiskManager
         components['IntelligentRiskManager'] = IntelligentRiskManager
-        logger.info("✅ IntelligentRiskManager imported")
+        logger.info("[OK] IntelligentRiskManager imported")
     except Exception as e:
-        logger.warning(f"⚠️ IntelligentRiskManager import failed: {e}")
+        logger.warning(f"[WARN] IntelligentRiskManager import failed: {e}")
         components['IntelligentRiskManager'] = MockComponent
     
     try:
         from models.adaptive_learning_system import AdaptiveLearningSystem
         components['AdaptiveLearningSystem'] = AdaptiveLearningSystem
-        logger.info("✅ AdaptiveLearningSystem imported")
+        logger.info("[OK] AdaptiveLearningSystem imported")
     except Exception as e:
-        logger.warning(f"⚠️ AdaptiveLearningSystem import failed: {e}")
+        logger.warning(f"[WARN] AdaptiveLearningSystem import failed: {e}")
         components['AdaptiveLearningSystem'] = MockComponent
     
     # Upgrade components
     try:
         from data.multi_source_data_manager import MultiSourceDataManager
         components['MultiSourceDataManager'] = MultiSourceDataManager
-        logger.info("✅ MultiSourceDataManager imported")
+        logger.info("[OK] MultiSourceDataManager imported")
     except Exception as e:
-        logger.warning(f"⚠️ MultiSourceDataManager import failed: {e}")
+        logger.warning(f"[WARN] MultiSourceDataManager import failed: {e}")
         components['MultiSourceDataManager'] = MockComponent
     
     try:
         from models.signal_aggregator import MultiSourceSignalAggregator
         components['MultiSourceSignalAggregator'] = MultiSourceSignalAggregator
-        logger.info("✅ MultiSourceSignalAggregator imported")
+        logger.info("[OK] MultiSourceSignalAggregator imported")
     except Exception as e:
-        logger.warning(f"⚠️ MultiSourceSignalAggregator import failed: {e}")
+        logger.warning(f"[WARN] MultiSourceSignalAggregator import failed: {e}")
         components['MultiSourceSignalAggregator'] = MockComponent
     
     try:
         from models.multi_timeframe_scanner import MultiTimeframeScanner
         components['MultiTimeframeScanner'] = MultiTimeframeScanner
-        logger.info("✅ MultiTimeframeScanner imported")
+        logger.info("[OK] MultiTimeframeScanner imported")
     except Exception as e:
-        logger.warning(f"⚠️ MultiTimeframeScanner import failed: {e}")
+        logger.warning(f"[WARN] MultiTimeframeScanner import failed: {e}")
         components['MultiTimeframeScanner'] = MockComponent
     
     try:
         from models.market_regime_detector import MarketRegimeDetector
         components['MarketRegimeDetector'] = MarketRegimeDetector
-        logger.info("✅ MarketRegimeDetector imported")
+        logger.info("[OK] MarketRegimeDetector imported")
     except Exception as e:
-        logger.warning(f"⚠️ MarketRegimeDetector import failed: {e}")
+        logger.warning(f"[WARN] MarketRegimeDetector import failed: {e}")
         components['MarketRegimeDetector'] = MockComponent
     
     try:
         from models.dynamic_watchlist_manager import DynamicWatchlistManager
         components['DynamicWatchlistManager'] = DynamicWatchlistManager
-        logger.info("✅ DynamicWatchlistManager imported")
+        logger.info("[OK] DynamicWatchlistManager imported")
     except Exception as e:
-        logger.warning(f"⚠️ DynamicWatchlistManager import failed: {e}")
+        logger.warning(f"[WARN] DynamicWatchlistManager import failed: {e}")
         components['DynamicWatchlistManager'] = MockComponent
     
     try:
         from monitoring.comprehensive_logger import ComprehensiveLogger
         components['ComprehensiveLogger'] = ComprehensiveLogger
-        logger.info("✅ ComprehensiveLogger imported")
+        logger.info("[OK] ComprehensiveLogger imported")
     except Exception as e:
-        logger.warning(f"⚠️ ComprehensiveLogger import failed: {e}")
+        logger.warning(f"[WARN] ComprehensiveLogger import failed: {e}")
         components['ComprehensiveLogger'] = MockComponent
     
     # SENIOR ANALYST BRAIN - The main intelligence upgrade
     try:
         from models.senior_analyst_ml_system import SeniorAnalystIntegration
         components['SeniorAnalystIntegration'] = SeniorAnalystIntegration
-        logger.info("🧠 ✅ SENIOR ANALYST BRAIN imported successfully!")
+        logger.info("[BRAIN] SENIOR ANALYST BRAIN imported successfully!")
         global SENIOR_ANALYST_AVAILABLE
         SENIOR_ANALYST_AVAILABLE = True
     except ImportError as e:
-        logger.warning(f"⚠️ Senior Analyst Brain import failed (ImportError): {e}")
+        logger.warning(f"[WARN] Senior Analyst Brain import failed (ImportError): {e}")
         logger.warning("This might be due to missing sklearn or other ML dependencies")
         components['SeniorAnalystIntegration'] = MockComponent
         SENIOR_ANALYST_AVAILABLE = False
     except Exception as e:
-        logger.warning(f"⚠️ Senior Analyst Brain import failed (Other): {e}")
+        logger.warning(f"[WARN] Senior Analyst Brain import failed (Other): {e}")
         components['SeniorAnalystIntegration'] = MockComponent
         SENIOR_ANALYST_AVAILABLE = False
     
@@ -312,7 +350,7 @@ class ProfessionalTradingBot:
         # Start Flask server
         self.start_web_server()
         
-        logger.info("🚀 Professional Trading Bot with Senior Analyst initialized")
+        logger.info("[INIT] Professional Trading Bot with Senior Analyst initialized")
     
     def initialize_components(self):
         """Initialize components with proper error handling"""
@@ -402,22 +440,22 @@ class ProfessionalTradingBot:
                 logger.error(f"Failed to initialize comprehensive logger: {e}")
                 self.logger = MockComponent()
             
-            # 🧠 SENIOR ANALYST BRAIN - The Intelligence Upgrade
+            # [BRAIN] SENIOR ANALYST BRAIN - The Intelligence Upgrade
             if SENIOR_ANALYST_AVAILABLE and self.config.ENABLE_SENIOR_ANALYST:
                 try:
                     self.senior_analyst = COMPONENTS['SeniorAnalystIntegration']()
-                    logger.info("🧠 SENIOR ANALYST BRAIN activated - Trading intelligence upgraded!")
+                    logger.info("[BRAIN] SENIOR ANALYST BRAIN activated - Trading intelligence upgraded!")
                 except Exception as e:
                     logger.error(f"Failed to initialize senior analyst: {e}")
                     self.senior_analyst = None
             else:
                 self.senior_analyst = None
-                logger.warning("⚠️ Senior Analyst Brain not available - using basic analysis")
+                logger.warning("[WARN] Senior Analyst Brain not available - using basic analysis")
             
-            logger.info("✅ All components initialized successfully")
+            logger.info("[OK] All components initialized successfully")
             
         except Exception as e:
-            logger.error(f"❌ Error initializing components: {e}")
+            logger.error(f"[ERROR] Error initializing components: {e}")
             # Continue with mock components rather than crashing
     
     def start_web_server(self):
@@ -431,15 +469,15 @@ class ProfessionalTradingBot:
         
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()
-        logger.info(f"🌐 Web server started on port {os.getenv('PORT', 10000)}")
+        logger.info(f"[WEB] Web server started on port {os.getenv('PORT', 10000)}")
     
     async def initialize_senior_analyst_training(self):
         """Train the senior analyst on historical data"""
         if not self.senior_analyst:
-            logger.info("🤖 No Senior Analyst available - skipping ML training")
+            logger.info("[INFO] No Senior Analyst available - skipping ML training")
             return
         
-        logger.info("🧠 Training Senior Analyst Brain on historical data...")
+        logger.info("[BRAIN] Training Senior Analyst Brain on historical data...")
         training_start = time.time()
         
         # Train on top symbols first for faster startup
@@ -447,7 +485,7 @@ class ProfessionalTradingBot:
         
         for i, symbol in enumerate(priority_symbols):
             try:
-                logger.info(f"🎓 Training Senior Analyst on {symbol} ({i+1}/{len(priority_symbols)})...")
+                logger.info(f"[TRAIN] Training Senior Analyst on {symbol} ({i+1}/{len(priority_symbols)})...")
                 
                 # Get historical data with reduced periods for faster training
                 historical_data = await self.data_manager.get_market_data(
@@ -456,29 +494,36 @@ class ProfessionalTradingBot:
                 
                 if historical_data is not None and len(historical_data) > 100:
                     await self.senior_analyst.initialize_for_symbol(symbol, historical_data)
-                    logger.info(f"✅ Senior Analyst trained on {symbol} ({len(historical_data)} data points)")
+                    logger.info(f"[OK] Senior Analyst trained on {symbol} ({len(historical_data)} data points)")
                 else:
-                    logger.warning(f"⚠️ Insufficient training data for {symbol}")
+                    logger.warning(f"[WARN] Insufficient training data for {symbol}")
                     
             except Exception as e:
-                logger.error(f"❌ Training failed for {symbol}: {e}")
+                logger.error(f"[ERROR] Training failed for {symbol}: {e}")
         
         training_time = time.time() - training_start
-        logger.info(f"🎓 Senior Analyst training completed in {training_time:.1f} seconds")
+        logger.info(f"[TRAIN] Senior Analyst training completed in {training_time:.1f} seconds")
         
         # Get intelligence report
         if hasattr(self.senior_analyst, 'get_system_intelligence_report'):
             try:
                 intelligence_report = self.senior_analyst.get_system_intelligence_report()
-                logger.info(f"🧠 Current Intelligence Level: {intelligence_report.get('intelligence_level', 'Unknown')}")
-                logger.info(f"📊 System Maturity: {intelligence_report.get('system_maturity', 'Unknown')}")
+                logger.info(f"[BRAIN] Current Intelligence Level: {intelligence_report.get('intelligence_level', 'Unknown')}")
+                logger.info(f"[INFO] System Maturity: {intelligence_report.get('system_maturity', 'Unknown')}")
             except Exception as e:
                 logger.warning(f"Could not get intelligence report: {e}")
     
     async def run_market_analysis_cycle(self):
         """Run market analysis cycle with Senior Analyst intelligence"""
         try:
-            logger.info("🔄 Starting market analysis cycle...")
+            logger.info("[CYCLE] Starting market analysis cycle...")
+            
+            # Check if trading is halted due to data issues
+            if hasattr(self.data_manager, 'trading_halt_manager') and self.data_manager.trading_halt_manager.is_halted:
+                logger.critical("🚨 TRADING HALTED - Skipping analysis cycle")
+                logger.critical(f"🚨 Halt reason: {self.data_manager.trading_halt_manager.halt_reason}")
+                logger.critical("🚨 Manual intervention required to resume trading")
+                return
             
             # Get account info with fallback
             try:
@@ -496,17 +541,17 @@ class ProfessionalTradingBot:
                 logger.error(f"Error getting account info: {e}")
                 return
             
-            logger.info(f"💰 Account equity: ${account_info.get('equity', 0):,.2f}")
+            logger.info(f"[ACCOUNT] Account equity: ${account_info.get('equity', 0):,.2f}")
             
             # Get symbols to analyze
             try:
                 if hasattr(self.watchlist_manager, 'get_all_symbols') and self.watchlist_manager.name != "MockComponent":
-                    symbols = list(self.watchlist_manager.get_all_symbols())[:5]  # Reduced for faster processing
+                    symbols = list(self.watchlist_manager.get_all_symbols())  # Analyze all symbols
                 else:
-                    symbols = self.config.WATCHLIST[:5]  # Reduced for faster processing
+                    symbols = self.config.WATCHLIST  # Analyze all watchlist symbols
             except Exception as e:
                 logger.warning(f"Using default watchlist due to error: {e}")
-                symbols = self.config.WATCHLIST[:5]
+                symbols = self.config.WATCHLIST
             
             # Analyze symbols with Senior Analyst intelligence
             analysis_results = []
@@ -527,35 +572,48 @@ class ProfessionalTradingBot:
             # Execute trades if enabled
             if self.config.ENABLE_TRADING:
                 if ranked_opportunities:
-                    logger.info(f"💼 {len(ranked_opportunities)} trading opportunities found, executing trades...")
+                    logger.info(f"[TRADE] {len(ranked_opportunities)} trading opportunities found, executing trades...")
                     await self.execute_trading_decisions(ranked_opportunities, account_info)
                 else:
-                    logger.info("📊 No trading opportunities met criteria this cycle")
+                    logger.info("[INFO] No trading opportunities met criteria this cycle")
             else:
-                logger.info("⚠️ Trading disabled - analysis only mode")
+                logger.info("[WARN] Trading disabled - analysis only mode")
                 if ranked_opportunities:
-                    logger.info(f"💡 Would have executed {len(ranked_opportunities)} trades if enabled")
+                    logger.info(f"[INFO] Would have executed {len(ranked_opportunities)} trades if enabled")
             
             # Update performance metrics
             self.update_performance_metrics()
             
-            logger.info("✅ Market analysis cycle completed")
+            logger.info("[OK] Market analysis cycle completed")
             
         except Exception as e:
-            logger.error(f"❌ Error in market analysis cycle: {e}")
+            logger.error(f"[ERROR] Error in market analysis cycle: {e}")
     
     async def analyze_single_symbol_with_senior_analyst(self, symbol: str, account_info: Dict, 
                                                        current_positions: Dict) -> Optional[Dict]:
         """Analyze single symbol using Senior Analyst Brain"""
         try:
-            logger.debug(f"🔍 Senior Analyst analyzing {symbol}...")
+            logger.debug(f"[ANALYZE] Senior Analyst analyzing {symbol}...")
             
-            # Get market data
-            market_data = await self.data_manager.get_market_data(symbol, self.config.PRIMARY_TIMEFRAME, 100)
-            
-            if market_data is None or len(market_data) < 20:
-                logger.warning(f"Insufficient data for {symbol}")
-                return None
+            # Get market data - with proper error handling for data failures
+            try:
+                market_data = await self.data_manager.get_market_data(symbol, self.config.PRIMARY_TIMEFRAME, 100)
+                
+                if market_data is None or len(market_data) < 20:
+                    logger.warning(f"Insufficient data for {symbol}")
+                    return None
+                    
+            except Exception as e:
+                # Check if this is a critical data failure
+                if "CriticalDataFailureError" in str(type(e)) or "All real data sources failed" in str(e):
+                    logger.critical(f"🚨 CRITICAL DATA FAILURE for {symbol}: {e}")
+                    logger.critical("🚨 HALTING ANALYSIS - Cannot proceed without real data")
+                    # Don't continue analysis with this symbol
+                    return None
+                else:
+                    # Other errors - log and skip
+                    logger.error(f"Data fetch error for {symbol}: {e}")
+                    return None
             
             # USE SENIOR ANALYST BRAIN FOR INTELLIGENCE
             if self.senior_analyst and self.senior_analyst.name != "MockComponent":
@@ -583,7 +641,7 @@ class ProfessionalTradingBot:
                     expected_return = analysis.get('expected_return', 0.0)
                     reasoning = analysis.get('reasoning', ['No reasoning provided'])
                     
-                    logger.info(f"🧠 {symbol}: {grade} | "
+                    logger.info(f"[BRAIN] {symbol}: {grade} | "
                                f"Confidence: {confidence:.1%} | "
                                f"Expected Return: {expected_return:.1%} | "
                                f"Reasoning: {reasoning[0] if reasoning else 'None'}")
@@ -720,7 +778,7 @@ class ProfessionalTradingBot:
             
             ranked = sorted(opportunities, key=opportunity_score, reverse=True)
             
-            logger.info(f"🎯 Found {len(ranked)} trading opportunities (from {len(analysis_results)} analyzed)")
+            logger.info(f"[RANK] Found {len(ranked)} trading opportunities (from {len(analysis_results)} analyzed)")
             
             # Log top opportunities
             for i, opp in enumerate(ranked[:3]):
@@ -757,12 +815,12 @@ class ProfessionalTradingBot:
                     
                     if trade_success:
                         executed_trades += 1
-                        logger.info(f"✅ Trade executed for {symbol}")
+                        logger.info(f"[OK] Trade executed for {symbol}")
                     
                 except Exception as e:
                     logger.error(f"Trade execution failed for {symbol}: {e}")
             
-            logger.info(f"📈 Executed {executed_trades} trades this cycle")
+            logger.info(f"[EXEC] Executed {executed_trades} trades this cycle")
             
         except Exception as e:
             logger.error(f"Error executing trades: {e}")
@@ -795,7 +853,7 @@ class ProfessionalTradingBot:
                 await self.senior_analyst.learn_from_trade_outcome(symbol, trade_data)
             
             # Simulate successful execution
-            logger.info(f"📊 Stock trade simulated for {symbol} (Grade: {trade_data['analyst_grade']})")
+            logger.info(f"[SIM] Stock trade simulated for {symbol} (Grade: {trade_data['analyst_grade']})")
             
             # Schedule trade outcome tracking
             asyncio.create_task(self._track_trade_outcome(trade_id, opportunity))
@@ -832,7 +890,7 @@ class ProfessionalTradingBot:
             if self.senior_analyst and self.senior_analyst.name != "MockComponent":
                 await self.senior_analyst.learn_from_trade_outcome(symbol, trade_data)
             
-            logger.info(f"📊 Options trade simulated for {symbol} (Grade: {trade_data['analyst_grade']})")
+            logger.info(f"[SIM] Options trade simulated for {symbol} (Grade: {trade_data['analyst_grade']})")
             
             # Schedule outcome tracking
             asyncio.create_task(self._track_trade_outcome(trade_id, opportunity))
@@ -888,7 +946,7 @@ class ProfessionalTradingBot:
                 )
                 
                 # Log outcome
-                status = "✅ PROFIT" if actual_success else "❌ LOSS"
+                status = "[PROFIT]" if actual_success else "[LOSS]"
                 logger.info(f"{status} {trade_data['symbol']}: {actual_return:.2%} "
                            f"(Predicted: {expected_return:.2%})")
                 
@@ -926,18 +984,18 @@ class ProfessionalTradingBot:
                     if os.environ.get('RENDER'):
                         # On Render, integrate dashboard into main app
                         dashboard_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'your-app.onrender.com')}/dashboard"
-                        logger.info("🌐 Dashboard integrated into main app for Render deployment")
+                        logger.info("[WEB] Dashboard integrated into main app for Render deployment")
                         
                         # Setup integrated dashboard routes directly
                         try:
                             self._setup_integrated_dashboard()
-                            logger.info("✅ Dashboard routes integrated successfully")
+                            logger.info("[OK] Dashboard routes integrated successfully")
                         except Exception as e:
                             logger.warning(f"Failed to integrate dashboard routes: {e}")
                             
                     else:
                         # Local development - run separate dashboard process
-                        logger.info("🌐 Starting separate dashboard process for local development...")
+                        logger.info("[WEB] Starting separate dashboard process for local development...")
                         dashboard_process = subprocess.Popen([
                             sys.executable, 'professional_dashboard.py'
                         ], cwd=os.getcwd(), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -953,9 +1011,9 @@ class ProfessionalTradingBot:
                             pass  # Browser opening might fail in some environments
                     
                     logger.info(f"🔗 Dashboard available at: {dashboard_url}")
-                    logger.info("✅ Web dashboard started successfully")
+                    logger.info("[OK] Web dashboard started successfully")
                     logger.info("=" * 80)
-                    logger.info(f"🌐 DASHBOARD URL: {dashboard_url}")
+                    logger.info(f"[WEB] DASHBOARD URL: {dashboard_url}")
                     logger.info("=" * 80)
                     
                 except Exception as e:
@@ -970,14 +1028,14 @@ class ProfessionalTradingBot:
     
     def _setup_integrated_dashboard(self):
         """Dashboard routes are now registered at module level"""
-        logger.info("✅ Dashboard routes already registered at module level")
+        logger.info("[OK] Dashboard routes already registered at module level")
     
     async def run(self):
         """Main execution loop with Senior Analyst"""
-        logger.info("🚀 Starting Professional Trading Bot with Senior Analyst")
-        logger.info(f"📋 Watchlist: {', '.join(self.config.WATCHLIST)}")
-        logger.info(f"💰 Trading enabled: {self.config.ENABLE_TRADING}")
-        logger.info(f"🧠 Senior Analyst enabled: {self.config.ENABLE_SENIOR_ANALYST and SENIOR_ANALYST_AVAILABLE}")
+        logger.info("[START] Starting Professional Trading Bot with Senior Analyst")
+        logger.info(f"[CONFIG] Watchlist: {', '.join(self.config.WATCHLIST)}")
+        logger.info(f"[CONFIG] Trading enabled: {self.config.ENABLE_TRADING}")
+        logger.info(f"[CONFIG] Senior Analyst enabled: {self.config.ENABLE_SENIOR_ANALYST and SENIOR_ANALYST_AVAILABLE}")
         
         self.running = True
         
@@ -993,20 +1051,20 @@ class ProfessionalTradingBot:
                 try:
                     current_time = datetime.now()
                     if self.is_market_hours(current_time):
-                        logger.info(f"📈 Market hours active - running analysis cycle")
+                        logger.info(f"[MARKET] Market hours active - running analysis cycle")
                         await self.run_market_analysis_cycle()
                     else:
-                        logger.info(f"🌙 Markets closed at {current_time.strftime('%Y-%m-%d %H:%M:%S')}, waiting...")
+                        logger.info(f"[MARKET] Markets closed at {current_time.strftime('%Y-%m-%d %H:%M:%S')}, waiting...")
                         await asyncio.sleep(300)  # Wait 5 minutes when market closed
                         continue  # Skip the normal sleep interval
                     
                     await asyncio.sleep(self.config.ANALYSIS_INTERVAL)
                     
                 except KeyboardInterrupt:
-                    logger.info("🛑 Bot stopped by user")
+                    logger.info("[STOP] Bot stopped by user")
                     break
                 except Exception as e:
-                    logger.error(f"❌ Error in main loop: {e}")
+                    logger.error(f"[ERROR] Error in main loop: {e}")
                     await asyncio.sleep(60)
                     
         finally:
@@ -1506,7 +1564,7 @@ async def main():
         bot = ProfessionalTradingBot()
         await bot.run()
     except Exception as e:
-        logger.error(f"❌ Critical error: {e}")
+        logger.error(f"[CRITICAL] Critical error: {e}")
 
 def run_bot():
     """Run bot with proper async handling"""
@@ -1516,7 +1574,7 @@ def run_bot():
         
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("🛑 Bot stopped by user")
+        logger.info("[STOP] Bot stopped by user")
     except Exception as e:
         logger.error(f"💥 Fatal error: {e}")
 

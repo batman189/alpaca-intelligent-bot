@@ -14,6 +14,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
+import time
 
 # Safe imports with fallbacks
 try:
@@ -32,10 +33,86 @@ warnings.filterwarnings('ignore')
 
 logger = logging.getLogger(__name__)
 
+class CriticalDataFailureError(Exception):
+    """Raised when all real data sources fail"""
+    pass
+
+class TradingHaltManager:
+    """Manages trading halts due to data source failures"""
+    def __init__(self):
+        self.is_halted = False
+        self.halt_reason = None
+        self.halt_start_time = None
+        self.consecutive_failures = 0
+        
+    def should_halt_trading(self, active_real_sources: int, total_failures: int) -> bool:
+        """Determine if trading should be halted"""
+        # Halt if no real data sources are available
+        if active_real_sources == 0:
+            return True
+        # Halt if we have multiple consecutive failures
+        if total_failures >= 5:
+            return True
+        return False
+    
+    def halt_trading(self, reason: str):
+        """Halt all trading operations"""
+        if not self.is_halted:
+            self.is_halted = True
+            self.halt_reason = reason
+            self.halt_start_time = datetime.now()
+            logger.critical(f"🚨 TRADING HALTED: {reason}")
+            logger.critical("🚨 ALL TRADING OPERATIONS SUSPENDED FOR SAFETY")
+    
+    def resume_trading(self, reason: str = "Data sources recovered"):
+        """Resume trading operations"""
+        if self.is_halted:
+            halt_duration = datetime.now() - self.halt_start_time
+            logger.info(f"✅ TRADING RESUMED: {reason} (Halted for {halt_duration})")
+            self.is_halted = False
+            self.halt_reason = None
+            self.halt_start_time = None
+            self.consecutive_failures = 0
+
+class DataSourceAlert:
+    """Alert system for critical data source failures"""
+    def __init__(self):
+        self.alert_threshold = 3
+        self.last_alert_time = {}
+        self.alert_cooldown = 300  # 5 minutes
+        
+    def should_send_alert(self, source: str, current_failures: int) -> bool:
+        """Check if we should send an alert"""
+        if current_failures < self.alert_threshold:
+            return False
+            
+        last_alert = self.last_alert_time.get(source, 0)
+        if time.time() - last_alert < self.alert_cooldown:
+            return False
+            
+        return True
+    
+    def send_critical_alert(self, source: str, error_msg: str, symbol: str = None):
+        """Send critical alert for data source failure"""
+        try:
+            alert_msg = f"🚨 CRITICAL DATA SOURCE FAILURE: {source}"
+            if symbol:
+                alert_msg += f" for symbol {symbol}"
+            alert_msg += f"\nError: {error_msg}\nTime: {datetime.now()}"
+            alert_msg += "\n⚠️  TRADING MAY BE COMPROMISED - MANUAL INTERVENTION REQUIRED"
+            
+            logger.critical(alert_msg)
+            self.last_alert_time[source] = time.time()
+            
+            # TODO: Integrate with email/SMS/Slack alerts
+            
+        except Exception as e:
+            logger.error(f"Failed to send critical alert: {e}")
+
 class DataSource(Enum):
     ALPACA = "alpaca"
     YAHOO = "yahoo"
-    MOCK = "mock"
+    # REMOVED: MOCK = "mock"  # No mock data in production!
 
 @dataclass
 class DataSourceConfig:
@@ -48,13 +125,17 @@ class DataSourceConfig:
 
 class MultiSourceDataManager:
     def __init__(self, alpaca_key: str = None, alpaca_secret: str = None):
-        """Initialize multi-source data manager with robust fallbacks"""
+        """Initialize multi-source data manager with SAFE fallbacks (NO MOCK DATA)"""
         
-        # Data source configurations (priority order)
+        # Safety systems
+        self.alert_system = DataSourceAlert()
+        self.trading_halt_manager = TradingHaltManager()
+        
+        # Data source configurations (REAL DATA ONLY)
         self.data_sources = {
             DataSource.ALPACA: DataSourceConfig("Alpaca", 1, ALPACA_AVAILABLE),
-            DataSource.YAHOO: DataSourceConfig("Yahoo Finance", 2, YAHOO_AVAILABLE), 
-            DataSource.MOCK: DataSourceConfig("Mock Data", 3, True)  # Always available fallback
+            DataSource.YAHOO: DataSourceConfig("Yahoo Finance", 2, YAHOO_AVAILABLE)
+            # REMOVED: Mock data - never use fake data for trading!
         }
         
         # Initialize Alpaca client
@@ -65,12 +146,12 @@ class MultiSourceDataManager:
                     alpaca_key, alpaca_secret, 
                     base_url='https://paper-api.alpaca.markets'
                 )
-                logger.info("✅ Alpaca client initialized")
+                logger.info("[OK] Alpaca client initialized")
             except Exception as e:
-                logger.error(f"❌ Alpaca initialization failed: {e}")
+                logger.error(f"[ERROR] Alpaca initialization failed: {e}")
                 self.data_sources[DataSource.ALPACA].is_active = False
         elif not ALPACA_AVAILABLE:
-            logger.warning("⚠️ Alpaca Trade API not available")
+            logger.warning("[WARN] Alpaca Trade API not available")
             self.data_sources[DataSource.ALPACA].is_active = False
         
         # Data cache for fallback
@@ -124,15 +205,31 @@ class MultiSourceDataManager:
                 logger.warning(f"⚠️ {source.value} failed for {symbol}: {e}")
                 continue
         
-        # Last resort: generate mock data for demo/testing
-        logger.warning(f"⚠️ All sources failed for {symbol}, generating mock data")
-        mock_data = self._generate_mock_data(symbol, timeframe, limit)
-        if mock_data is not None:
-            self._cache_data(cache_key, mock_data)
-            return mock_data
-            
-        logger.error(f"❌ Complete failure to get data for {symbol}")
-        return None
+        # 🚨 CRITICAL: ALL REAL DATA SOURCES HAVE FAILED!
+        logger.critical(f"🚨 CRITICAL FAILURE: All data sources failed for {symbol}")
+        logger.critical("🚨 NO REAL MARKET DATA AVAILABLE - CANNOT CONTINUE SAFELY")
+        
+        # Count active real sources and total failures
+        active_real_sources = sum(1 for config in self.data_sources.values() if config.is_active)
+        total_failures = sum(config.error_count for config in self.data_sources.values())
+        
+        # Send critical alert
+        self.alert_system.send_critical_alert(
+            "ALL_SOURCES", 
+            f"All data sources failed for {symbol}", 
+            symbol
+        )
+        
+        # Check if trading should be halted
+        if self.trading_halt_manager.should_halt_trading(active_real_sources, total_failures):
+            self.trading_halt_manager.halt_trading(
+                f"All data sources failed - no real data available"
+            )
+        
+        # NEVER GENERATE FAKE DATA - Raise exception instead
+        raise CriticalDataFailureError(
+            f"All real data sources failed for {symbol}. Trading halted for safety."
+        )
 
     async def _fetch_from_source_async(self, source: DataSource, symbol: str, 
                                      timeframe: str, limit: int) -> Optional[pd.DataFrame]:
@@ -142,9 +239,9 @@ class MultiSourceDataManager:
             return await self._fetch_alpaca_data_async(symbol, timeframe, limit)
         elif source == DataSource.YAHOO:
             return await self._fetch_yahoo_data_async(symbol, timeframe, limit)
-        elif source == DataSource.MOCK:
-            return self._generate_mock_data(symbol, timeframe, limit)
         
+        # NO MOCK DATA - only real sources allowed
+        logger.error(f"Unknown data source: {source}")
         return None
 
     async def _fetch_alpaca_data_async(self, symbol: str, timeframe: str, 
@@ -327,88 +424,9 @@ class MultiSourceDataManager:
             except asyncio.TimeoutError:
                 raise Exception("Yahoo Finance request timeout")
 
-    def _generate_mock_data(self, symbol: str, timeframe: str, limit: int) -> pd.DataFrame:
-        """Generate realistic mock data for testing/demo"""
-        try:
-            logger.info(f"📊 Generating mock data for {symbol}")
-            
-            # Base prices for common symbols
-            base_prices = {
-                'SPY': 450, 'QQQ': 380, 'AAPL': 175, 'MSFT': 335, 'GOOGL': 135,
-                'AMZN': 145, 'TSLA': 250, 'META': 320, 'NVDA': 900, 'NFLX': 450
-            }
-            
-            base_price = base_prices.get(symbol, 100)
-            
-            # Generate timestamps based on timeframe
-            if timeframe in ["1Min", "5Min", "15Min"]:
-                freq_map = {"1Min": "1T", "5Min": "5T", "15Min": "15T"}
-                freq = freq_map[timeframe]
-                end_time = datetime.now().replace(second=0, microsecond=0)
-                start_time = end_time - timedelta(hours=limit // 4)  # Rough estimate
-            elif timeframe == "1Hour":
-                freq = "1H"
-                end_time = datetime.now().replace(minute=0, second=0, microsecond=0)
-                start_time = end_time - timedelta(hours=limit)
-            else:  # 1Day
-                freq = "1D"
-                end_time = datetime.now().replace(hour=16, minute=0, second=0, microsecond=0)
-                start_time = end_time - timedelta(days=limit)
-            
-            # Create date range
-            timestamps = pd.date_range(start=start_time, end=end_time, freq=freq)
-            if len(timestamps) == 0:
-                timestamps = pd.date_range(start=start_time, periods=limit, freq=freq)
-            
-            # Limit to requested size
-            if len(timestamps) > limit:
-                timestamps = timestamps[-limit:]
-            
-            # Generate realistic price data with random walk
-            np.random.seed(hash(symbol) % 2**32)  # Consistent seed per symbol
-            
-            returns = np.random.normal(0, 0.01, len(timestamps))  # 1% daily volatility
-            prices = [base_price]
-            
-            for i in range(1, len(timestamps)):
-                new_price = prices[-1] * (1 + returns[i])
-                prices.append(max(new_price, 1.0))  # Ensure positive prices
-            
-            # Create OHLCV data
-            data = []
-            for i, (timestamp, close_price) in enumerate(zip(timestamps, prices)):
-                # Generate realistic OHLC from close price
-                volatility = 0.005  # 0.5% intraday volatility
-                
-                open_price = close_price * (1 + np.random.normal(0, volatility))
-                high_price = max(open_price, close_price) * (1 + abs(np.random.normal(0, volatility)))
-                low_price = min(open_price, close_price) * (1 - abs(np.random.normal(0, volatility)))
-                
-                # Ensure OHLC logic
-                high_price = max(high_price, open_price, close_price)
-                low_price = min(low_price, open_price, close_price)
-                
-                # Generate realistic volume
-                base_volume = 1000000
-                volume = int(base_volume * (1 + np.random.normal(0, 0.3)))
-                volume = max(volume, 100000)  # Minimum volume
-                
-                data.append({
-                    'open': round(open_price, 2),
-                    'high': round(high_price, 2),
-                    'low': round(low_price, 2),
-                    'close': round(close_price, 2),
-                    'volume': volume
-                })
-            
-            df = pd.DataFrame(data, index=timestamps)
-            
-            logger.info(f"📊 Generated {len(df)} bars of mock data for {symbol}")
-            return df
-            
-        except Exception as e:
-            logger.error(f"Failed to generate mock data: {e}")
-            return pd.DataFrame()
+    # REMOVED: _generate_mock_data() - No fake data allowed in production trading!
+    # Mock data generation was dangerous and could lead to trading on invalid data.
+    # All data must come from real market sources (Alpaca, Yahoo Finance, etc.)
 
     async def get_multiple_symbols_data(self, symbols: List[str], 
                                       timeframe: str = "15Min") -> Dict[str, pd.DataFrame]:
@@ -471,17 +489,32 @@ class MultiSourceDataManager:
             logger.info(f"✅ Re-enabled {source.value} after successful fetch")
 
     def _handle_error(self, source: DataSource, error: str):
-        """Handle data source error"""
+        """Handle data source error with enhanced safety measures"""
         config = self.data_sources[source]
         config.error_count += 1
         config.last_error = error
         
+        # Send alert if threshold reached
+        if self.alert_system.should_send_alert(source.value, config.error_count):
+            self.alert_system.send_critical_alert(source.value, error)
+        
+        # Disable source if too many errors
         if config.error_count >= self.max_errors_before_disable:
             config.is_active = False
-            logger.warning(f"⚠️ Disabled {source.value} after {config.error_count} errors")
+            logger.critical(f"🚨 DISABLED {source.value} after {config.error_count} errors")
+            
+            # Check if this leaves us with no active sources
+            active_sources = sum(1 for c in self.data_sources.values() if c.is_active)
+            if active_sources == 0:
+                logger.critical("🚨 CRITICAL: NO DATA SOURCES REMAIN ACTIVE!")
+                self.trading_halt_manager.halt_trading("All data sources disabled")
+                self.alert_system.send_critical_alert(
+                    "SYSTEM", 
+                    "All data sources disabled - no real data available"
+                )
 
     def get_data_source_status(self) -> Dict[str, Dict]:
-        """Get status of all data sources"""
+        """Get status of all data sources with safety information"""
         status = {}
         for source, config in self.data_sources.items():
             status[source.value] = {
@@ -489,8 +522,21 @@ class MultiSourceDataManager:
                 'priority': config.priority,
                 'error_count': config.error_count,
                 'last_error': config.last_error,
-                'last_success': config.last_success.isoformat() if config.last_success else None
+                'last_success': config.last_success.isoformat() if config.last_success else None,
+                'is_real_data': True  # All sources are real data now
             }
+        
+        # Add system safety status
+        status['system'] = {
+            'trading_halted': self.trading_halt_manager.is_halted,
+            'halt_reason': self.trading_halt_manager.halt_reason,
+            'halt_start_time': self.trading_halt_manager.halt_start_time.isoformat() if self.trading_halt_manager.halt_start_time else None,
+            'health_score': self.get_health_score(),
+            'active_sources': sum(1 for c in self.data_sources.values() if c.is_active),
+            'total_sources': len(self.data_sources),
+            'uses_real_data_only': True
+        }
+        
         return status
 
     def reset_data_source(self, source: DataSource):
@@ -502,16 +548,26 @@ class MultiSourceDataManager:
         logger.info(f"🔄 Reset {source.value}")
 
     def get_health_score(self) -> float:
-        """Calculate overall data system health (0-100)"""
-        active_sources = sum(1 for config in self.data_sources.values() 
-                           if config.is_active)
+        """Calculate overall data system health (0-100) - real data sources only"""
+        active_sources = sum(1 for config in self.data_sources.values() if config.is_active)
         total_sources = len(self.data_sources)
+        
+        if total_sources == 0:
+            return 0
         
         base_score = (active_sources / total_sources) * 100
         recent_errors = sum(config.error_count for config in self.data_sources.values())
-        error_penalty = min(recent_errors * 5, 30)
+        error_penalty = min(recent_errors * 10, 50)  # Increased penalty for errors
         
-        return max(0, base_score - error_penalty)
+        final_score = max(0, base_score - error_penalty)
+        
+        # Log critical health warnings
+        if final_score < 50:
+            logger.critical(f"🚨 CRITICAL: Data health at {final_score}% - Trading safety compromised!")
+        elif final_score < 70:
+            logger.warning(f"⚠️ Warning: Data health at {final_score}% - Monitor closely")
+        
+        return final_score
 
     def get_cache_statistics(self) -> Dict[str, Any]:
         """Get cache usage statistics"""
