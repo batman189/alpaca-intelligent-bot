@@ -1,0 +1,26 @@
+{
+  "symbol_performance": {},
+  "overall_performance": {
+    "total_trades": 0,
+    "profitable_trades": 0,
+    "total_pnl": 0.0,
+    "win_rate": 0.0,
+    "sharpe_ratio": 0.0,
+    "max_drawdown": 0.0,
+    "avg_return_per_trade": 0.0,
+    "volatility_of_returns": 0.0
+  },
+  "dynamic_thresholds": {
+    "min_confidence": 0.65,
+    "max_correlation": 0.8,
+    "volatility_limit": 0.4,
+    "position_size_multiplier": 1.0
+  },
+  "market_regimes": {
+    "current_regime": "neutral",
+    "regime_confidence": 0.5,
+    "regime_history": "deque([], maxlen=100)",
+    "regime_performance": {}
+  },
+  "last_saved": "2025-09-10T09:37:42.001004"
+}
