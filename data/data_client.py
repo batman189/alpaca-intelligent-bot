@@ -92,7 +92,7 @@ class EnhancedDataClient:
     }
     MAX_CACHE_SIZE = 500  # Fallback for compatibility
     
-    def __init__(self, api_key: str, secret_key: str, base_url: str = "https://paper-api.alpaca.markets"):
+    def __init__(self, api_key: str, secret_key: str, base_url: str = "https://api.alpaca.markets"):
         self.api_key = api_key
         self.secret_key = secret_key
         self.base_url = base_url
@@ -105,12 +105,12 @@ class EnhancedDataClient:
             api_version='v2'
         )
         
-        # Initialize streaming
+        # Initialize streaming with your $100/month plan
         self.stream = Stream(
             key_id=api_key,
             secret_key=secret_key,
             base_url=base_url,
-            data_feed='iex'  # Use IEX for real-time data
+            data_feed='sip'  # Use SIP for your paid plan (more comprehensive than IEX)
         )
         
         # Data storage

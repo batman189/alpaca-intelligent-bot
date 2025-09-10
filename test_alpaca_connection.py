@@ -207,6 +207,7 @@ async def test_data_client():
             logger.info(f"Latest bar: O=${latest['open']:.2f} H=${latest['high']:.2f} L=${latest['low']:.2f} C=${latest['close']:.2f}")
             
             # Show some technical indicators if available
+            import pandas as pd
             if 'rsi' in data.columns and not pd.isna(latest.get('rsi')):
                 logger.info(f"Technical indicators: RSI={latest['rsi']:.1f}")
         else:

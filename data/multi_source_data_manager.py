@@ -142,9 +142,14 @@ class MultiSourceDataManager:
         self.alpaca_client = None
         if alpaca_key and alpaca_secret and ALPACA_AVAILABLE:
             try:
+                # Use live market data API for your $100/month plan
+                # Paper API only gives you paper trading data, not real market data
+                import os
+                base_url = os.getenv('APCA_API_BASE_URL', 'https://api.alpaca.markets')  # Live API for real market data
+                
                 self.alpaca_client = tradeapi.REST(
                     alpaca_key, alpaca_secret, 
-                    base_url='https://paper-api.alpaca.markets'
+                    base_url=base_url
                 )
                 logger.info("[OK] Alpaca client initialized")
             except Exception as e:
@@ -324,9 +329,13 @@ class MultiSourceDataManager:
         def fetch_yahoo_sync():
             try:
                 # Map timeframes and periods for Yahoo Finance
+                # Updated to respect Yahoo Finance limitations
                 period_map = {
-                    "1Min": "5d", "5Min": "1mo", "15Min": "3mo",
-                    "1Hour": "6mo", "1Day": "1y"
+                    "1Min": "5d",    # 1-minute data: max 7 days
+                    "5Min": "1mo",   # 5-minute data: max 60 days  
+                    "15Min": "2mo",  # 15-minute data: max 60 days (reduced from 3mo)
+                    "1Hour": "6mo",  # 1-hour data: max 730 days
+                    "1Day": "1y"     # 1-day data: max many years
                 }
                 
                 interval_map = {
@@ -358,8 +367,8 @@ class MultiSourceDataManager:
                         symbol, 
                         period=period, 
                         interval=interval,
-                        progress=False,
-                        show_errors=False
+                        progress=False
+                        # Removed show_errors - deprecated in newer yfinance versions
                     )
                 
                 if data.empty:

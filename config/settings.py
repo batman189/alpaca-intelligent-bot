@@ -6,7 +6,7 @@ load_dotenv()
 # Remove any class-based settings. Use only simple variables:
 APCA_API_KEY_ID = os.getenv('APCA_API_KEY_ID', '')
 APCA_API_SECRET_KEY = os.getenv('APCA_API_SECRET_KEY', '')
-APCA_API_BASE_URL = os.getenv('APCA_API_BASE_URL', 'https://paper-api.alpaca.markets')
+APCA_API_BASE_URL = os.getenv('APCA_API_BASE_URL', 'https://api.alpaca.markets')
 
 RISK_PER_TRADE = float(os.getenv('RISK_PER_TRADE', '0.02'))
 MAX_PORTFOLIO_RISK = float(os.getenv('MAX_PORTFOLIO_RISK', '0.1'))

@@ -111,7 +111,7 @@ class Config:
         # Alpaca API settings with validation
         self.APCA_API_KEY_ID = os.getenv('APCA_API_KEY_ID', '')
         self.APCA_API_SECRET_KEY = os.getenv('APCA_API_SECRET_KEY', '')
-        self.APCA_API_BASE_URL = os.getenv('APCA_API_BASE_URL', 'https://paper-api.alpaca.markets')
+        self.APCA_API_BASE_URL = os.getenv('APCA_API_BASE_URL', 'https://api.alpaca.markets')
         
         # Validate credentials
         if not self.APCA_API_KEY_ID or not self.APCA_API_SECRET_KEY:
