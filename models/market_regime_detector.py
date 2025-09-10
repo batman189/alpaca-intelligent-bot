@@ -564,24 +564,16 @@ if __name__ == "__main__":
     
     print("🧪 Testing Market Regime Detector...")
     
-    # Create sample market data
-    sample_data = {}
-    for symbol in ["SPY", "QQQ", "IWM"]:
-        dates = pd.date_range(start='2024-01-01', periods=100, freq='D')
-        sample_data[symbol] = pd.DataFrame({
-            'open': np.random.randn(100).cumsum() + 400,
-            'high': np.random.randn(100).cumsum() + 402,
-            'low': np.random.randn(100).cumsum() + 398,
-            'close': np.random.randn(100).cumsum() + 400,
-            'volume': np.random.randint(10000000, 100000000, 100)
-        }, index=dates)
+    # REMOVED: Fake sample data generation - only real market data allowed
+    # This detector now requires real market data from data manager
+    
+    print("⚠️ Market Regime Detector requires real market data to function")
+    print("❌ Fake data generation removed for safety")
+    print("✅ Use with real data manager for proper operation")
     
     async def test_detection():
-        analysis = await detector.detect_market_regime(sample_data)
-        
-        print(f"✅ Detected regime: {analysis.regime.value}")
-        print(f"📊 Confidence: {analysis.confidence:.1f}%")
-        print(f"💪 Strength: {analysis.strength.name}")
+        print("❌ Test requires real market data - no fake data available")
+        return None
         print(f"🎯 Key indicators: {analysis.key_indicators}")
         
         # Test strategy adjustments

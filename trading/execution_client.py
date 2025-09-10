@@ -846,14 +846,50 @@ class AdvancedExecutionClient:
             return False
     
     async def _get_options_quote(self, option_symbol: str) -> Optional[Dict]:
-        """Get options quote (simplified - would need real options data feed)"""
+        """Get real options quote from Alpaca API"""
         try:
-            # This would need to be implemented with real options data
-            # For now, return None to use provided price
+            import requests
+            
+            headers = {
+                'APCA-API-KEY-ID': self.api_key,
+                'APCA-API-SECRET-KEY': self.secret_key
+            }
+            
+            if not self.api_key or not self.secret_key:
+                self.logger.error("❌ API credentials not available for options quote")
+                return None
+            
+            url = f"https://data.alpaca.markets/v1beta1/options/snapshots"
+            params = {'symbols': option_symbol}
+            
+            response = requests.get(url, headers=headers, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'snapshots' in data and option_symbol in data['snapshots']:
+                    contract_data = data['snapshots'][option_symbol]
+                    
+                    latest_quote = contract_data.get('latestQuote', {})
+                    latest_trade = contract_data.get('latestTrade', {})
+                    
+                    self.logger.info(f"✅ Real options quote fetched for {option_symbol}")
+                    
+                    return {
+                        'bid': latest_quote.get('bidPrice', 0.0),
+                        'ask': latest_quote.get('askPrice', 0.0),
+                        'last_price': latest_trade.get('price', 0.0),
+                        'volume': latest_trade.get('size', 0),
+                        'timestamp': latest_quote.get('timestamp') or latest_trade.get('timestamp')
+                    }
+            elif response.status_code == 404:
+                self.logger.warning(f"⚠️ Option symbol {option_symbol} not found")
+            else:
+                self.logger.error(f"❌ Options quote API error: {response.status_code}")
+                
             return None
             
         except Exception as e:
-            self.logger.error(f"Error getting options quote: {e}")
+            self.logger.error(f"❌ Error getting real options quote for {option_symbol}: {e}")
             return None
     
     async def place_bracket_order(self,

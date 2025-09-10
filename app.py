@@ -139,23 +139,26 @@ class Config:
         self.ENABLE_SENIOR_ANALYST = os.getenv('ENABLE_SENIOR_ANALYST', 'true').lower() == 'true'
         self.TRAINING_PERIODS = int(os.getenv('TRAINING_PERIODS', '500'))  # Reduced for faster startup
 
-# Mock/Fallback components for when imports fail
-class MockComponent:
-    def __init__(self, *args, **kwargs):
-        self.name = "MockComponent"
-        logger.warning(f"Using MockComponent - some functionality will be disabled")
+# REMOVED: FailureComponent - SYSTEM FAILS INSTEAD OF USING FAKE COMPONENTS
+# The system now fails completely when real components are not available
+# This prevents silent failures with non-functional mock components
+
+class FailureComponent:
+    """Raises exceptions instead of providing mock functionality"""
+    def __init__(self, component_name: str):
+        self.component_name = component_name
+        error_msg = f"CRITICAL: {component_name} component unavailable - system cannot continue safely"
+        logger.error(f"❌ {error_msg}")
+        raise Exception(error_msg)
     
     def __getattr__(self, name):
-        def mock_method(*args, **kwargs):
-            logger.debug(f"MockComponent.{name} called")
-            return None
-        return mock_method
+        raise Exception(f"❌ SYSTEM FAILURE: {self.component_name}.{name} not available - refusing to use mock data")
     
     async def __aenter__(self):
-        return self
+        raise Exception(f"❌ SYSTEM FAILURE: {self.component_name} context manager not available")
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+        raise Exception(f"❌ SYSTEM FAILURE: {self.component_name} context manager not available")
 
 # Safe component imports with fallbacks
 def safe_import_components():
@@ -169,10 +172,10 @@ def safe_import_components():
         logger.info("[OK] AdvancedMarketAnalyzer imported")
     except ImportError as e:
         logger.warning(f"[WARN] AdvancedMarketAnalyzer import failed (ImportError): {e}")
-        components['AdvancedMarketAnalyzer'] = MockComponent
+        components['AdvancedMarketAnalyzer'] = None  # Will cause failure during initialization
     except Exception as e:
         logger.warning(f"[WARN] AdvancedMarketAnalyzer import failed (Other): {e}")
-        components['AdvancedMarketAnalyzer'] = MockComponent
+        components['AdvancedMarketAnalyzer'] = None  # Will cause failure during initialization
     
     try:
         from data.data_client import EnhancedDataClient
@@ -180,7 +183,7 @@ def safe_import_components():
         logger.info("[OK] EnhancedDataClient imported")
     except Exception as e:
         logger.warning(f"[WARN] EnhancedDataClient import failed: {e}")
-        components['EnhancedDataClient'] = MockComponent
+        components['EnhancedDataClient'] = FailureComponent
     
     try:
         from trading.options_engine import ProfessionalOptionsEngine
@@ -188,7 +191,7 @@ def safe_import_components():
         logger.info("[OK] ProfessionalOptionsEngine imported")
     except Exception as e:
         logger.warning(f"[WARN] ProfessionalOptionsEngine import failed: {e}")
-        components['ProfessionalOptionsEngine'] = MockComponent
+        components['ProfessionalOptionsEngine'] = FailureComponent
     
     try:
         from trading.execution_client import AdvancedExecutionClient
@@ -196,7 +199,7 @@ def safe_import_components():
         logger.info("[OK] AdvancedExecutionClient imported")
     except Exception as e:
         logger.warning(f"[WARN] AdvancedExecutionClient import failed: {e}")
-        components['AdvancedExecutionClient'] = MockComponent
+        components['AdvancedExecutionClient'] = FailureComponent
     
     try:
         from trading.intelligent_risk_manager import IntelligentRiskManager
@@ -204,7 +207,7 @@ def safe_import_components():
         logger.info("[OK] IntelligentRiskManager imported")
     except Exception as e:
         logger.warning(f"[WARN] IntelligentRiskManager import failed: {e}")
-        components['IntelligentRiskManager'] = MockComponent
+        components['IntelligentRiskManager'] = FailureComponent
     
     try:
         from models.adaptive_learning_system import AdaptiveLearningSystem
@@ -212,7 +215,7 @@ def safe_import_components():
         logger.info("[OK] AdaptiveLearningSystem imported")
     except Exception as e:
         logger.warning(f"[WARN] AdaptiveLearningSystem import failed: {e}")
-        components['AdaptiveLearningSystem'] = MockComponent
+        components['AdaptiveLearningSystem'] = FailureComponent
     
     # Upgrade components
     try:
@@ -221,7 +224,7 @@ def safe_import_components():
         logger.info("[OK] MultiSourceDataManager imported")
     except Exception as e:
         logger.warning(f"[WARN] MultiSourceDataManager import failed: {e}")
-        components['MultiSourceDataManager'] = MockComponent
+        components['MultiSourceDataManager'] = FailureComponent
     
     try:
         from models.signal_aggregator import MultiSourceSignalAggregator
@@ -229,7 +232,7 @@ def safe_import_components():
         logger.info("[OK] MultiSourceSignalAggregator imported")
     except Exception as e:
         logger.warning(f"[WARN] MultiSourceSignalAggregator import failed: {e}")
-        components['MultiSourceSignalAggregator'] = MockComponent
+        components['MultiSourceSignalAggregator'] = FailureComponent
     
     try:
         from models.multi_timeframe_scanner import MultiTimeframeScanner
@@ -237,7 +240,7 @@ def safe_import_components():
         logger.info("[OK] MultiTimeframeScanner imported")
     except Exception as e:
         logger.warning(f"[WARN] MultiTimeframeScanner import failed: {e}")
-        components['MultiTimeframeScanner'] = MockComponent
+        components['MultiTimeframeScanner'] = FailureComponent
     
     try:
         from models.market_regime_detector import MarketRegimeDetector
@@ -245,7 +248,7 @@ def safe_import_components():
         logger.info("[OK] MarketRegimeDetector imported")
     except Exception as e:
         logger.warning(f"[WARN] MarketRegimeDetector import failed: {e}")
-        components['MarketRegimeDetector'] = MockComponent
+        components['MarketRegimeDetector'] = FailureComponent
     
     try:
         from models.dynamic_watchlist_manager import DynamicWatchlistManager
@@ -253,7 +256,7 @@ def safe_import_components():
         logger.info("[OK] DynamicWatchlistManager imported")
     except Exception as e:
         logger.warning(f"[WARN] DynamicWatchlistManager import failed: {e}")
-        components['DynamicWatchlistManager'] = MockComponent
+        components['DynamicWatchlistManager'] = FailureComponent
     
     try:
         from monitoring.comprehensive_logger import ComprehensiveLogger
@@ -261,7 +264,7 @@ def safe_import_components():
         logger.info("[OK] ComprehensiveLogger imported")
     except Exception as e:
         logger.warning(f"[WARN] ComprehensiveLogger import failed: {e}")
-        components['ComprehensiveLogger'] = MockComponent
+        components['ComprehensiveLogger'] = FailureComponent
     
     # SENIOR ANALYST BRAIN - The main intelligence upgrade
     try:
@@ -273,18 +276,18 @@ def safe_import_components():
     except ImportError as e:
         logger.warning(f"[WARN] Senior Analyst Brain import failed (ImportError): {e}")
         logger.warning("This might be due to missing sklearn or other ML dependencies")
-        components['SeniorAnalystIntegration'] = MockComponent
+        components['SeniorAnalystIntegration'] = FailureComponent
         SENIOR_ANALYST_AVAILABLE = False
     except Exception as e:
         logger.warning(f"[WARN] Senior Analyst Brain import failed (Other): {e}")
-        components['SeniorAnalystIntegration'] = MockComponent
+        components['SeniorAnalystIntegration'] = FailureComponent
         SENIOR_ANALYST_AVAILABLE = False
     
     return components
 
 # Import components
 COMPONENTS = safe_import_components()
-SENIOR_ANALYST_AVAILABLE = 'SeniorAnalystIntegration' in COMPONENTS and COMPONENTS['SeniorAnalystIntegration'] != MockComponent
+SENIOR_ANALYST_AVAILABLE = 'SeniorAnalystIntegration' in COMPONENTS and COMPONENTS['SeniorAnalystIntegration'] != FailureComponent
 
 class CircuitBreaker:
     """Circuit breaker for resilient service calls"""
@@ -360,7 +363,7 @@ class ProfessionalTradingBot:
                 self.market_analyzer = COMPONENTS['AdvancedMarketAnalyzer']()
             except Exception as e:
                 logger.error(f"Failed to initialize market analyzer: {e}")
-                self.market_analyzer = MockComponent()
+                self.market_analyzer = FailureComponent()
             
             try:
                 self.data_client = COMPONENTS['EnhancedDataClient'](
@@ -370,13 +373,13 @@ class ProfessionalTradingBot:
                 )
             except Exception as e:
                 logger.error(f"Failed to initialize data client: {e}")
-                self.data_client = MockComponent()
+                self.data_client = FailureComponent()
             
             try:
                 self.options_engine = COMPONENTS['ProfessionalOptionsEngine']()
             except Exception as e:
                 logger.error(f"Failed to initialize options engine: {e}")
-                self.options_engine = MockComponent()
+                self.options_engine = FailureComponent()
             
             try:
                 self.execution_client = COMPONENTS['AdvancedExecutionClient'](
@@ -386,19 +389,19 @@ class ProfessionalTradingBot:
                 )
             except Exception as e:
                 logger.error(f"Failed to initialize execution client: {e}")
-                self.execution_client = MockComponent()
+                self.execution_client = FailureComponent()
             
             try:
                 self.risk_manager = COMPONENTS['IntelligentRiskManager']()
             except Exception as e:
                 logger.error(f"Failed to initialize risk manager: {e}")
-                self.risk_manager = MockComponent()
+                self.risk_manager = FailureComponent()
             
             try:
                 self.learning_system = COMPONENTS['AdaptiveLearningSystem']()
             except Exception as e:
                 logger.error(f"Failed to initialize learning system: {e}")
-                self.learning_system = MockComponent()
+                self.learning_system = FailureComponent()
             
             # Upgrade components
             try:
@@ -408,37 +411,37 @@ class ProfessionalTradingBot:
                 )
             except Exception as e:
                 logger.error(f"Failed to initialize data manager: {e}")
-                self.data_manager = MockComponent()
+                self.data_manager = FailureComponent()
             
             try:
                 self.signal_aggregator = COMPONENTS['MultiSourceSignalAggregator']()
             except Exception as e:
                 logger.error(f"Failed to initialize signal aggregator: {e}")
-                self.signal_aggregator = MockComponent()
+                self.signal_aggregator = FailureComponent()
             
             try:
                 self.timeframe_scanner = COMPONENTS['MultiTimeframeScanner']()
             except Exception as e:
                 logger.error(f"Failed to initialize timeframe scanner: {e}")
-                self.timeframe_scanner = MockComponent()
+                self.timeframe_scanner = FailureComponent()
             
             try:
                 self.regime_detector = COMPONENTS['MarketRegimeDetector']()
             except Exception as e:
                 logger.error(f"Failed to initialize regime detector: {e}")
-                self.regime_detector = MockComponent()
+                self.regime_detector = FailureComponent()
             
             try:
                 self.watchlist_manager = COMPONENTS['DynamicWatchlistManager'](self.config.WATCHLIST)
             except Exception as e:
                 logger.error(f"Failed to initialize watchlist manager: {e}")
-                self.watchlist_manager = MockComponent()
+                self.watchlist_manager = FailureComponent()
             
             try:
                 self.logger = COMPONENTS['ComprehensiveLogger']()
             except Exception as e:
                 logger.error(f"Failed to initialize comprehensive logger: {e}")
-                self.logger = MockComponent()
+                self.logger = FailureComponent()
             
             # [BRAIN] SENIOR ANALYST BRAIN - The Intelligence Upgrade
             if SENIOR_ANALYST_AVAILABLE and self.config.ENABLE_SENIOR_ANALYST:
@@ -530,7 +533,7 @@ class ProfessionalTradingBot:
                 account_info = {'equity': 0, 'buying_power': 0}  # Will be replaced by real account data
                 current_positions = {}  # Default empty positions
                 
-                if hasattr(self.execution_client, 'get_account_info') and self.execution_client.name != "MockComponent":
+                if hasattr(self.execution_client, 'get_account_info') and self.execution_client.name != "FailureComponent":
                     try:
                         account_info = await self.execution_client.get_account_info()
                         current_positions = await self.execution_client.get_current_positions()
@@ -545,7 +548,7 @@ class ProfessionalTradingBot:
             
             # Get symbols to analyze
             try:
-                if hasattr(self.watchlist_manager, 'get_all_symbols') and self.watchlist_manager.name != "MockComponent":
+                if hasattr(self.watchlist_manager, 'get_all_symbols') and self.watchlist_manager.name != "FailureComponent":
                     symbols = list(self.watchlist_manager.get_all_symbols())  # Analyze all symbols
                 else:
                     symbols = self.config.WATCHLIST  # Analyze all watchlist symbols
@@ -616,7 +619,7 @@ class ProfessionalTradingBot:
                     return None
             
             # USE SENIOR ANALYST BRAIN FOR INTELLIGENCE
-            if self.senior_analyst and self.senior_analyst.name != "MockComponent":
+            if self.senior_analyst and self.senior_analyst.name != "FailureComponent":
                 try:
                     # Get senior analyst recommendation with circuit breaker
                     analysis = await self.circuit_breakers['senior_analyst'].call(
@@ -849,7 +852,7 @@ class ProfessionalTradingBot:
             self.active_trades[trade_id] = trade_data
             
             # Feed back to Senior Analyst for learning
-            if self.senior_analyst and self.senior_analyst.name != "MockComponent":
+            if self.senior_analyst and self.senior_analyst.name != "FailureComponent":
                 await self.senior_analyst.learn_from_trade_outcome(symbol, trade_data)
             
             # Simulate successful execution
@@ -887,7 +890,7 @@ class ProfessionalTradingBot:
             self.active_trades[trade_id] = trade_data
             
             # Feed back to learning system
-            if self.senior_analyst and self.senior_analyst.name != "MockComponent":
+            if self.senior_analyst and self.senior_analyst.name != "FailureComponent":
                 await self.senior_analyst.learn_from_trade_outcome(symbol, trade_data)
             
             logger.info(f"[SIM] Options trade simulated for {symbol} (Grade: {trade_data['analyst_grade']})")
@@ -902,53 +905,66 @@ class ProfessionalTradingBot:
             return False
     
     async def _track_trade_outcome(self, trade_id: str, opportunity: Dict):
-        """Track trade outcomes for learning"""
+        """Track REAL trade outcomes - NO SIMULATION ALLOWED"""
         try:
-            # Wait for trade to "complete" (simulate holding period)
+            # REMOVED: Fake trade simulation - this was dangerous
+            # Now we track REAL trades through execution client
+            
+            if not hasattr(self.execution_client, 'get_position') or self.execution_client.name == "FailureComponent":
+                logger.error(f"❌ Cannot track real trade {trade_id} - execution client unavailable")
+                logger.error(f"❌ REFUSING to simulate trade outcomes - use real trading only")
+                return
+            
+            # Track real trade position
+            symbol = opportunity.get('symbol', 'UNKNOWN')
+            
+            # Wait reasonable time for position to develop
             time_horizon = opportunity.get('time_horizon_minutes', 240)
-            await asyncio.sleep(min(time_horizon * 60, 1800))  # Max 30 minutes for demo
+            await asyncio.sleep(min(time_horizon * 60, 1800))  # Max 30 minutes for monitoring
             
-            # Simulate trade outcome
-            import random
-            confidence = opportunity.get('confidence', 0.5)
-            expected_return = opportunity.get('expected_return', 0.0)
+            # Get REAL position data from execution client
+            try:
+                real_position = await self.execution_client.get_position(symbol)
+                
+                if real_position:
+                    # Calculate REAL P&L from actual position
+                    actual_return = real_position.get('unrealized_pl', 0.0)
+                    entry_value = real_position.get('market_value', 1.0)
+                    actual_success = actual_return > 0
+                    
+                    # Update with REAL trade data
+                    if trade_id in self.active_trades:
+                        trade_data = self.active_trades[trade_id]
+                        trade_data['profitable'] = actual_success
+                        trade_data['actual_return'] = actual_return
+                        trade_data['close_time'] = datetime.now()
+                        
+                        # Move to completed trades
+                        self.completed_trades.append(trade_data)
+                        del self.active_trades[trade_id]
+                        
+                        # Update performance metrics
+                        self.performance_metrics['total_trades'] += 1
+                        if actual_success:
+                            self.performance_metrics['profitable_trades'] += 1
+                        
+                        self.performance_metrics['total_pnl'] += actual_return
+                        self.performance_metrics['win_rate'] = (
+                            self.performance_metrics['profitable_trades'] / 
+                            self.performance_metrics['total_trades']
+                        )
+                        
+                        # Log outcome
+                        expected_return = opportunity.get('expected_return', 0.0)
+                        status = "[PROFIT]" if actual_success else "[LOSS]"
+                        logger.info(f"{status} {trade_data['symbol']}: {actual_return:.2%} "
+                                   f"(Predicted: {expected_return:.2%})")
+                else:
+                    logger.warning(f"❌ No real position found for {symbol} - cannot track real P&L")
             
-            # Higher confidence = better success rate
-            success_probability = 0.3 + (confidence * 0.5)
-            actual_success = random.random() < success_probability
-            
-            # Calculate simulated return
-            if actual_success:
-                actual_return = expected_return * random.uniform(0.7, 1.3)
-            else:
-                actual_return = -abs(expected_return) * random.uniform(0.5, 1.0)
-            
-            # Update trade record
-            if trade_id in self.active_trades:
-                trade_data = self.active_trades[trade_id]
-                trade_data['profitable'] = actual_success
-                trade_data['actual_return'] = actual_return
-                trade_data['close_time'] = datetime.now()
-                
-                # Move to completed trades
-                self.completed_trades.append(trade_data)
-                del self.active_trades[trade_id]
-                
-                # Update performance metrics
-                self.performance_metrics['total_trades'] += 1
-                if actual_success:
-                    self.performance_metrics['profitable_trades'] += 1
-                
-                self.performance_metrics['total_pnl'] += actual_return
-                self.performance_metrics['win_rate'] = (
-                    self.performance_metrics['profitable_trades'] / 
-                    self.performance_metrics['total_trades']
-                )
-                
-                # Log outcome
-                status = "[PROFIT]" if actual_success else "[LOSS]"
-                logger.info(f"{status} {trade_data['symbol']}: {actual_return:.2%} "
-                           f"(Predicted: {expected_return:.2%})")
+            except Exception as pos_error:
+                logger.error(f"❌ Failed to get real position for {symbol}: {pos_error}")
+                logger.error(f"❌ Cannot track trade without real position data")
                 
         except Exception as e:
             logger.error(f"Trade outcome tracking failed: {e}")
@@ -1043,7 +1059,7 @@ class ProfessionalTradingBot:
         self.start_web_dashboard()
         
         # Train the Senior Analyst first (if available)
-        if self.senior_analyst and self.senior_analyst.name != "MockComponent":
+        if self.senior_analyst and self.senior_analyst.name != "FailureComponent":
             await self.initialize_senior_analyst_training()
         
         try:
@@ -1437,7 +1453,7 @@ def detailed_health():
 def get_intelligence_status():
     """Get senior analyst intelligence status"""
     try:
-        if bot and bot.senior_analyst and bot.senior_analyst.name != "MockComponent":
+        if bot and bot.senior_analyst and bot.senior_analyst.name != "FailureComponent":
             intelligence_report = bot.senior_analyst.get_system_intelligence_report()
             return jsonify({
                 'status': 'active',
@@ -1464,7 +1480,7 @@ def get_performance():
                 'performance_metrics': bot.performance_metrics,
                 'active_trades': len(bot.active_trades),
                 'completed_trades': len(bot.completed_trades),
-                'senior_analyst_status': 'active' if bot.senior_analyst and bot.senior_analyst.name != "MockComponent" else 'unavailable',
+                'senior_analyst_status': 'active' if bot.senior_analyst and bot.senior_analyst.name != "FailureComponent" else 'unavailable',
                 'timestamp': datetime.now().isoformat()
             })
         else:
@@ -1521,7 +1537,7 @@ def run_test():
 def trigger_retrain():
     """Trigger Senior Analyst retraining"""
     try:
-        if bot and bot.senior_analyst and bot.senior_analyst.name != "MockComponent":
+        if bot and bot.senior_analyst and bot.senior_analyst.name != "FailureComponent":
             # This would trigger retraining in a real system
             asyncio.create_task(bot.initialize_senior_analyst_training())
             return jsonify({

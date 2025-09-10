@@ -702,26 +702,49 @@ class SeniorAnalystBrain:
             logger.error(f"Failed to track prediction outcome: {e}")
     
     async def _get_actual_outcome(self, symbol: str, prediction_record: Dict) -> Dict:
-        """Get actual market outcome for learning"""
+        """Get REAL market outcome for learning - NO SIMULATION ALLOWED"""
         try:
-            import random
+            # REMOVED: Fake random simulation - this was dangerous for ML training
+            # Now we get REAL market data to validate predictions
             
-            confidence = prediction_record['confidence']
-            success_probability = 0.5 + (confidence - 0.5) * 0.5
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                logger.error(f"❌ Cannot validate prediction for {symbol} - no real data manager")
+                logger.error(f"❌ REFUSING to simulate outcomes - need real market data")
+                raise Exception(f"Real data manager required to validate {symbol} predictions")
             
-            actual_success = random.random() < success_probability
-            actual_return = random.uniform(-0.05, 0.08) if actual_success else random.uniform(-0.08, 0.02)
-            
-            return {
-                'timestamp': datetime.now(),
-                'success': actual_success,
-                'actual_return': actual_return,
-                'prediction_accuracy': confidence if actual_success else (1 - confidence)
-            }
+            # Get REAL price movement for validation
+            try:
+                current_data = await self.data_manager.get_market_data(symbol, '1Day', 5)
+                
+                if current_data is not None and len(current_data) >= 2:
+                    # Calculate REAL return from actual price movement
+                    latest_close = current_data['close'].iloc[-1]
+                    previous_close = current_data['close'].iloc[-2]
+                    actual_return = (latest_close - previous_close) / previous_close
+                    
+                    # Compare against prediction
+                    predicted_direction = prediction_record.get('signal', 'hold')
+                    actual_success = (
+                        (predicted_direction == 'buy' and actual_return > 0) or
+                        (predicted_direction == 'sell' and actual_return < 0)
+                    )
+                    
+                    return {
+                        'timestamp': datetime.now(),
+                        'success': actual_success,
+                        'actual_return': actual_return,
+                        'prediction_accuracy': prediction_record['confidence'] if actual_success else (1 - prediction_record['confidence'])
+                    }
+                else:
+                    raise Exception(f"Insufficient real market data for {symbol}")
+                    
+            except Exception as data_error:
+                logger.error(f"❌ Failed to get real market outcome for {symbol}: {data_error}")
+                raise Exception(f"Cannot validate predictions without real market data")
             
         except Exception as e:
             logger.error(f"Failed to get actual outcome: {e}")
-            return {'success': False, 'actual_return': 0.0, 'prediction_accuracy': 0.5}
+            raise e  # Don't return fake data - let the system fail properly
     
     def _update_accuracy_metrics(self, symbol: str):
         """Update prediction accuracy metrics"""

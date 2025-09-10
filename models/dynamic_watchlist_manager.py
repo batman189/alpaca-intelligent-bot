@@ -47,7 +47,7 @@ class DynamicWatchlistManager:
         # Base static watchlist
         self.base_symbols = set(base_symbols or [
             "SPY", "QQQ", "IWM", "AAPL", "GOOGL", "MSFT", "TSLA", 
-            "AMZN", "NVDA", "META", "NFLX", "AMD"
+            "AMZN", "NVDA", "META", "NFLX", "AMD", "UNH", "JNJ", "PFE"
         ])
         
         # Dynamic watchlists by category
@@ -686,22 +686,11 @@ if __name__ == "__main__":
         
         print("🧪 Testing Dynamic Watchlist Manager...")
         
-        # Mock data manager
-        class MockDataManager:
-            async def get_market_data(self, symbol, timeframe, limit):
-                dates = pd.date_range(start='2024-01-01', periods=limit, freq='1h')
-                return pd.DataFrame({
-                    'open': np.random.randn(limit).cumsum() + 100,
-                    'high': np.random.randn(limit).cumsum() + 102,
-                    'low': np.random.randn(limit).cumsum() + 98,
-                    'close': np.random.randn(limit).cumsum() + 100,
-                    'volume': np.random.randint(10000, 100000, limit)
-                }, index=dates)
-        
-        mock_dm = MockDataManager()
-        
-        # Test watchlist updates
-        updates = await manager.update_watchlists(mock_dm)
+        # REMOVED: MockDataManager - NO FAKE DATA ALLOWED  
+        # This manager now requires real data manager to function
+        print("❌ Dynamic Watchlist Manager test requires real data manager")
+        print("❌ Fake data generation removed for safety")
+        return None
         
         total_updates = sum(updates.values())
         print(f"✅ Updated watchlists: {total_updates} new symbols")

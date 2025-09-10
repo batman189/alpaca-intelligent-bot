@@ -726,3 +726,193 @@ class EnhancedDataClient:
             'timeframe_usage': timeframe_usage,
             'recommendations': recommendations
         }
+    
+    # === OPTIONS DATA FUNCTIONALITY ===
+    
+    async def get_options_chain(self, symbol: str) -> Optional[Dict]:
+        """
+        Fetch real options chain data from Alpaca API
+        Returns options chain with calls and puts for all available expirations
+        """
+        try:
+            self.logger.info(f"Fetching options chain for {symbol}")
+            
+            # Use Alpaca's options snapshot endpoint
+            import requests
+            
+            headers = {
+                'APCA-API-KEY-ID': self.api_key,
+                'APCA-API-SECRET-KEY': self.secret_key
+            }
+            
+            url = f"https://data.alpaca.markets/v1beta1/options/snapshots/{symbol}"
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Process the raw data into our expected format
+                options_chain = self._process_options_snapshot(data, symbol)
+                
+                self.logger.info(f"✅ Options chain fetched for {symbol}: {len(options_chain.get('calls', {}))} calls, {len(options_chain.get('puts', {}))} puts")
+                return options_chain
+                
+            elif response.status_code == 404:
+                self.logger.warning(f"⚠️ No options available for {symbol}")
+                return None
+            else:
+                self.logger.error(f"❌ Options API error for {symbol}: {response.status_code} - {response.text}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error fetching options chain for {symbol}: {e}")
+            return None
+    
+    def _process_options_snapshot(self, raw_data: Dict, underlying_symbol: str) -> Dict:
+        """
+        Process raw Alpaca options snapshot data into our expected format
+        """
+        try:
+            options_chain = {'calls': {}, 'puts': {}}
+            
+            if 'snapshots' not in raw_data:
+                return options_chain
+            
+            for contract_symbol, contract_data in raw_data['snapshots'].items():
+                # Parse the option symbol (e.g., "AAPL240315C00172500")
+                option_info = self._parse_option_symbol(contract_symbol)
+                if not option_info:
+                    continue
+                
+                expiration = option_info['expiration']
+                strike = option_info['strike']
+                option_type = option_info['type']  # 'C' or 'P'
+                
+                # Get latest trade and quote
+                latest_trade = contract_data.get('latestTrade', {})
+                latest_quote = contract_data.get('latestQuote', {})
+                greeks = contract_data.get('greeks', {})
+                
+                contract_info = {
+                    'symbol': contract_symbol,
+                    'strike': strike,
+                    'last_price': latest_trade.get('price', 0.0),
+                    'bid': latest_quote.get('bidPrice', 0.0),
+                    'ask': latest_quote.get('askPrice', 0.0),
+                    'volume': latest_trade.get('size', 0),
+                    'open_interest': contract_data.get('openInterest', 0),
+                    'implied_volatility': greeks.get('impliedVolatility', 0.0),
+                    'delta': greeks.get('delta', 0.0),
+                    'gamma': greeks.get('gamma', 0.0),
+                    'theta': greeks.get('theta', 0.0),
+                    'vega': greeks.get('vega', 0.0),
+                    'rho': greeks.get('rho', 0.0),
+                    'timestamp': latest_trade.get('timestamp') or latest_quote.get('timestamp')
+                }
+                
+                # Organize by expiration and type
+                if expiration not in options_chain['calls']:
+                    options_chain['calls'][expiration] = {}
+                    options_chain['puts'][expiration] = {}
+                
+                if option_type == 'C':
+                    options_chain['calls'][expiration][str(strike)] = contract_info
+                elif option_type == 'P':
+                    options_chain['puts'][expiration][str(strike)] = contract_info
+            
+            return options_chain
+            
+        except Exception as e:
+            self.logger.error(f"Error processing options snapshot: {e}")
+            return {'calls': {}, 'puts': {}}
+    
+    def _parse_option_symbol(self, option_symbol: str) -> Optional[Dict]:
+        """
+        Parse Alpaca option symbol format: AAPL240315C00172500
+        Returns: {'underlying': 'AAPL', 'expiration': '2024-03-15', 'type': 'C', 'strike': 172.5}
+        """
+        try:
+            # Example: AAPL240315C00172500
+            # Find the position of C or P
+            option_type_pos = -1
+            option_type = None
+            
+            for i, char in enumerate(option_symbol):
+                if char in ['C', 'P']:
+                    option_type_pos = i
+                    option_type = char
+                    break
+            
+            if option_type_pos == -1:
+                return None
+            
+            # Extract parts
+            underlying = option_symbol[:option_type_pos-6]  # Remove date part
+            date_part = option_symbol[option_type_pos-6:option_type_pos]  # YYMMDD
+            strike_part = option_symbol[option_type_pos+1:]  # Strike price
+            
+            # Convert date (YYMMDD to YYYY-MM-DD)
+            year = 2000 + int(date_part[:2])
+            month = int(date_part[2:4])
+            day = int(date_part[4:6])
+            expiration = f"{year}-{month:02d}-{day:02d}"
+            
+            # Convert strike (remove leading zeros and divide by 1000)
+            strike = float(strike_part) / 1000.0
+            
+            return {
+                'underlying': underlying,
+                'expiration': expiration,
+                'type': option_type,
+                'strike': strike
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing option symbol {option_symbol}: {e}")
+            return None
+    
+    async def get_option_quote(self, option_symbol: str) -> Optional[Dict]:
+        """
+        Get real-time quote for a specific option contract
+        """
+        try:
+            import requests
+            
+            headers = {
+                'APCA-API-KEY-ID': self.api_key,
+                'APCA-API-SECRET-KEY': self.secret_key
+            }
+            
+            url = f"https://data.alpaca.markets/v1beta1/options/snapshots"
+            params = {'symbols': option_symbol}
+            
+            response = requests.get(url, headers=headers, params=params, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'snapshots' in data and option_symbol in data['snapshots']:
+                    contract_data = data['snapshots'][option_symbol]
+                    
+                    latest_quote = contract_data.get('latestQuote', {})
+                    latest_trade = contract_data.get('latestTrade', {})
+                    greeks = contract_data.get('greeks', {})
+                    
+                    return {
+                        'symbol': option_symbol,
+                        'bid': latest_quote.get('bidPrice', 0.0),
+                        'ask': latest_quote.get('askPrice', 0.0),
+                        'last_price': latest_trade.get('price', 0.0),
+                        'volume': latest_trade.get('size', 0),
+                        'implied_volatility': greeks.get('impliedVolatility', 0.0),
+                        'delta': greeks.get('delta', 0.0),
+                        'gamma': greeks.get('gamma', 0.0),
+                        'theta': greeks.get('theta', 0.0),
+                        'vega': greeks.get('vega', 0.0),
+                        'timestamp': latest_quote.get('timestamp') or latest_trade.get('timestamp')
+                    }
+                    
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error getting option quote for {option_symbol}: {e}")
+            return None

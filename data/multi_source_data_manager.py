@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from enum import Enum
 import time
+import os
 
 # Safe imports with fallbacks
 try:
@@ -436,6 +437,172 @@ class MultiSourceDataManager:
     # REMOVED: _generate_mock_data() - No fake data allowed in production trading!
     # Mock data generation was dangerous and could lead to trading on invalid data.
     # All data must come from real market sources (Alpaca, Yahoo Finance, etc.)
+    
+    # === REAL OPTIONS DATA FUNCTIONALITY ===
+    
+    async def get_options_chain(self, symbol: str) -> Optional[Dict]:
+        """
+        Get real options chain data from Alpaca API
+        Returns None if options data is not available for the symbol
+        """
+        try:
+            logger.info(f"Fetching real options chain for {symbol}")
+            
+            # Try to get options data from Alpaca first
+            if self.alpaca_client:
+                options_data = await self.alpaca_client.get_options_chain(symbol)
+                if options_data:
+                    logger.info(f"✅ Real options chain fetched for {symbol}")
+                    return options_data
+            
+            # If Alpaca client is not available, try direct API call
+            return await self._fetch_alpaca_options_direct(symbol)
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to fetch options chain for {symbol}: {e}")
+            return None
+    
+    async def _fetch_alpaca_options_direct(self, symbol: str) -> Optional[Dict]:
+        """
+        Direct API call to Alpaca for options data when client is not available
+        """
+        try:
+            import requests
+            
+            headers = {
+                'APCA-API-KEY-ID': os.getenv('APCA_API_KEY_ID'),
+                'APCA-API-SECRET-KEY': os.getenv('APCA_API_SECRET_KEY')
+            }
+            
+            if not headers['APCA-API-KEY-ID'] or not headers['APCA-API-SECRET-KEY']:
+                logger.error("❌ Alpaca API credentials not found for options data")
+                return None
+            
+            url = f"https://data.alpaca.markets/v1beta1/options/snapshots/{symbol}"
+            
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return self._process_alpaca_options_data(data, symbol)
+            elif response.status_code == 404:
+                logger.warning(f"⚠️ No options contracts available for {symbol}")
+                return None
+            else:
+                logger.error(f"❌ Alpaca options API error: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Error in direct Alpaca options fetch: {e}")
+            return None
+    
+    def _process_alpaca_options_data(self, raw_data: Dict, symbol: str) -> Dict:
+        """
+        Process raw Alpaca options API response into standardized format
+        """
+        try:
+            options_chain = {'calls': {}, 'puts': {}}
+            
+            if 'snapshots' not in raw_data:
+                return options_chain
+            
+            for contract_symbol, contract_data in raw_data['snapshots'].items():
+                # Parse option symbol to extract details
+                parsed = self._parse_alpaca_option_symbol(contract_symbol)
+                if not parsed:
+                    continue
+                
+                expiration = parsed['expiration']
+                strike = parsed['strike']
+                option_type = parsed['type']
+                
+                # Extract pricing and Greeks data
+                latest_trade = contract_data.get('latestTrade', {})
+                latest_quote = contract_data.get('latestQuote', {})
+                greeks = contract_data.get('greeks', {})
+                
+                contract_info = {
+                    'symbol': contract_symbol,
+                    'strike': strike,
+                    'last_price': latest_trade.get('price', 0.0),
+                    'bid': latest_quote.get('bidPrice', 0.0),
+                    'ask': latest_quote.get('askPrice', 0.0),
+                    'volume': latest_trade.get('size', 0),
+                    'open_interest': contract_data.get('openInterest', 0),
+                    'implied_volatility': greeks.get('impliedVolatility', 0.0),
+                    'delta': greeks.get('delta', 0.0),
+                    'gamma': greeks.get('gamma', 0.0),
+                    'theta': greeks.get('theta', 0.0),
+                    'vega': greeks.get('vega', 0.0),
+                    'rho': greeks.get('rho', 0.0),
+                    'timestamp': latest_trade.get('timestamp') or latest_quote.get('timestamp'),
+                    'source': 'alpaca'
+                }
+                
+                # Initialize expiration date if not exists
+                if expiration not in options_chain['calls']:
+                    options_chain['calls'][expiration] = {}
+                    options_chain['puts'][expiration] = {}
+                
+                # Store in appropriate category
+                if option_type == 'C':
+                    options_chain['calls'][expiration][str(strike)] = contract_info
+                elif option_type == 'P':
+                    options_chain['puts'][expiration][str(strike)] = contract_info
+            
+            logger.info(f"✅ Processed options data for {symbol}: "
+                       f"{sum(len(exp) for exp in options_chain['calls'].values())} calls, "
+                       f"{sum(len(exp) for exp in options_chain['puts'].values())} puts")
+            
+            return options_chain
+            
+        except Exception as e:
+            logger.error(f"❌ Error processing Alpaca options data: {e}")
+            return {'calls': {}, 'puts': {}}
+    
+    def _parse_alpaca_option_symbol(self, option_symbol: str) -> Optional[Dict]:
+        """
+        Parse Alpaca option symbol: AAPL240315C00172500
+        Format: [SYMBOL][YYMMDD][C/P][STRIKE*1000]
+        """
+        try:
+            # Find the position of 'C' or 'P'
+            option_type = None
+            type_pos = -1
+            
+            for i, char in enumerate(option_symbol):
+                if char in ['C', 'P']:
+                    option_type = char
+                    type_pos = i
+                    break
+            
+            if type_pos == -1:
+                return None
+            
+            # Extract components
+            underlying = option_symbol[:type_pos-6]
+            date_str = option_symbol[type_pos-6:type_pos]  # YYMMDD
+            strike_str = option_symbol[type_pos+1:]        # Strike * 1000
+            
+            # Parse date
+            year = 2000 + int(date_str[:2])
+            month = int(date_str[2:4])
+            day = int(date_str[4:6])
+            expiration = f"{year}-{month:02d}-{day:02d}"
+            
+            # Parse strike price
+            strike = float(strike_str) / 1000.0
+            
+            return {
+                'underlying': underlying,
+                'expiration': expiration,
+                'type': option_type,
+                'strike': strike
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to parse option symbol {option_symbol}: {e}")
+            return None
 
     async def get_multiple_symbols_data(self, symbols: List[str], 
                                       timeframe: str = "15Min") -> Dict[str, pd.DataFrame]:

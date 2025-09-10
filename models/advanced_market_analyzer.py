@@ -59,7 +59,7 @@ class AdvancedMarketAnalyzer:
         
         # Pattern detection thresholds
         self.volume_surge_threshold = 2.0  # 2x average volume
-        self.momentum_threshold = 0.015    # 1.5% move for momentum
+        self.momentum_threshold = 0.012    # 1.2% move for momentum (lowered to catch more moves like UNH)
         self.volatility_threshold = 1.5    # 1.5x normal volatility
         
         # ML model parameters

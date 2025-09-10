@@ -1302,7 +1302,7 @@ class ProfessionalOptionsEngine:
             self.logger.error(f"Error generating market outlook: {e}")
             return {}
             
-    def analyze_options_opportunity(self, symbol: str, analysis: Dict, price_data: pd.DataFrame) -> Dict:
+    async def analyze_options_opportunity(self, symbol: str, analysis: Dict, price_data: pd.DataFrame) -> Dict:
         """
         Analyze options trading opportunities for a given symbol
         This method is required by the main application
@@ -1323,28 +1323,32 @@ class ProfessionalOptionsEngine:
             prediction = analysis.get('prediction', 0)
             confidence = analysis.get('confidence', 0.5)
             
-            # Create mock market conditions based on analysis
+            # Create market conditions based on analysis
             market_conditions = MarketConditions(
                 underlying_price=current_price,
-                implied_volatility=0.25,  # Default IV
-                implied_volatility_rank=0.5,
-                historical_volatility=0.20,
-                volume=1000000,
-                volume_ratio=1.0,
+                volatility=0.25,  # Default volatility
                 trend_strength=prediction * confidence,
-                support_levels=[current_price * 0.95],
-                resistance_levels=[current_price * 1.05],
+                volume_surge=False,
                 earnings_approaching=False,
                 technical_breakout=confidence > 0.8,
-                momentum_score=confidence
+                support_resistance_levels=[current_price * 0.95, current_price * 1.05],
+                implied_volatility_rank=0.5
             )
             
-            # Mock options chain - in real implementation this would come from data feed
-            mock_options_chain = self._create_mock_options_chain(symbol, current_price)
+            # Get REAL options chain from data manager
+            real_options_chain = await self._get_real_options_chain(symbol)
             
-            # Analyze opportunities using existing methods
+            # FAIL if real options data is unavailable - NO FAKE DATA EVER
+            if not real_options_chain or not real_options_chain.get('calls') or not real_options_chain.get('puts'):
+                self.logger.error(f"❌ CRITICAL FAILURE: No real options data available for {symbol}")
+                self.logger.error(f"❌ TRADING HALTED: Cannot analyze options without real market data")
+                raise Exception(f"No real options data available for {symbol} - refusing to use fake data")
+            else:
+                self.logger.info(f"✅ Using real options chain for {symbol}")
+            
+            # Analyze opportunities using real options data
             opportunities = self.analyze_market_opportunity(
-                symbol, price_data, mock_options_chain, market_conditions
+                symbol, price_data, real_options_chain, market_conditions
             )
             
             if opportunities:
@@ -1409,53 +1413,137 @@ class ProfessionalOptionsEngine:
             self.logger.error(f"Error selecting best option contract: {e}")
             return None
     
-    def _create_mock_options_chain(self, symbol: str, current_price: float) -> Dict:
-        """Create a mock options chain for analysis when real data is not available"""
+    async def _get_real_options_chain(self, symbol: str) -> Optional[Dict]:
+        """
+        Fetch real options chain data from data manager
+        """
+        try:
+            # Try to get from data manager if available
+            if hasattr(self, 'data_manager') and self.data_manager:
+                return await self.data_manager.get_options_chain(symbol)
+            
+            # Direct API call as fallback
+            import os
+            import requests
+            
+            headers = {
+                'APCA-API-KEY-ID': os.getenv('APCA_API_KEY_ID'),
+                'APCA-API-SECRET-KEY': os.getenv('APCA_API_SECRET_KEY')
+            }
+            
+            if not headers['APCA-API-KEY-ID']:
+                return None
+            
+            url = f"https://data.alpaca.markets/v1beta1/options/snapshots/{symbol}"
+            response = requests.get(url, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return self._process_real_options_data(data, symbol)
+            
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"Error fetching real options chain for {symbol}: {e}")
+            return None
+    
+    def _process_real_options_data(self, raw_data: Dict, symbol: str) -> Dict:
+        """Process real Alpaca options data into our format"""
         try:
             options_chain = {'calls': {}, 'puts': {}}
             
-            # Create options for next 3 Friday expirations
-            for weeks in [1, 2, 4]:
-                expiration_date = self._get_next_friday(weeks)
-                exp_str = expiration_date.strftime('%Y-%m-%d')
+            if 'snapshots' not in raw_data:
+                return options_chain
+            
+            for contract_symbol, contract_data in raw_data['snapshots'].items():
+                # Parse the contract symbol
+                parsed = self._parse_contract_symbol(contract_symbol)
+                if not parsed:
+                    continue
                 
-                options_chain['calls'][exp_str] = {}
-                options_chain['puts'][exp_str] = {}
+                expiration = parsed['expiration']
+                strike = parsed['strike']
+                option_type = parsed['type']
                 
-                # Create strikes around current price
-                strikes = []
-                for pct in [-0.1, -0.05, 0, 0.05, 0.1]:  # ±10% from current price
-                    strike = round(current_price * (1 + pct))
-                    strikes.append(strike)
+                # Extract data
+                latest_trade = contract_data.get('latestTrade', {})
+                latest_quote = contract_data.get('latestQuote', {})
+                greeks = contract_data.get('greeks', {})
                 
-                for strike in strikes:
-                    # Mock call data
-                    options_chain['calls'][exp_str][str(strike)] = {
-                        'strike': strike,
-                        'last_price': max(0.01, current_price - strike + 2.0) if strike < current_price else 1.0,
-                        'bid': 0.5,
-                        'ask': 1.0,
-                        'volume': 100,
-                        'open_interest': 500,
-                        'implied_volatility': 0.25
-                    }
-                    
-                    # Mock put data
-                    options_chain['puts'][exp_str][str(strike)] = {
-                        'strike': strike,
-                        'last_price': max(0.01, strike - current_price + 2.0) if strike > current_price else 1.0,
-                        'bid': 0.5,
-                        'ask': 1.0,
-                        'volume': 100,
-                        'open_interest': 500,
-                        'implied_volatility': 0.25
-                    }
+                contract_info = {
+                    'strike': strike,
+                    'last_price': latest_trade.get('price', 0.0),
+                    'bid': latest_quote.get('bidPrice', 0.0),
+                    'ask': latest_quote.get('askPrice', 0.0),
+                    'volume': latest_trade.get('size', 0),
+                    'open_interest': contract_data.get('openInterest', 0),
+                    'implied_volatility': greeks.get('impliedVolatility', 0.0),
+                    'delta': greeks.get('delta', 0.0),
+                    'gamma': greeks.get('gamma', 0.0),
+                    'theta': greeks.get('theta', 0.0),
+                    'vega': greeks.get('vega', 0.0)
+                }
+                
+                # Initialize expiration if needed
+                if expiration not in options_chain['calls']:
+                    options_chain['calls'][expiration] = {}
+                    options_chain['puts'][expiration] = {}
+                
+                # Store by type
+                if option_type == 'C':
+                    options_chain['calls'][expiration][str(strike)] = contract_info
+                elif option_type == 'P':
+                    options_chain['puts'][expiration][str(strike)] = contract_info
             
             return options_chain
             
         except Exception as e:
-            self.logger.error(f"Error creating mock options chain: {e}")
+            self.logger.error(f"Error processing real options data: {e}")
             return {'calls': {}, 'puts': {}}
+    
+    def _parse_contract_symbol(self, contract_symbol: str) -> Optional[Dict]:
+        """Parse Alpaca option symbol format"""
+        try:
+            # Find C or P
+            type_pos = -1
+            option_type = None
+            for i, char in enumerate(contract_symbol):
+                if char in ['C', 'P']:
+                    type_pos = i
+                    option_type = char
+                    break
+            
+            if type_pos == -1:
+                return None
+            
+            # Extract parts
+            underlying = contract_symbol[:type_pos-6]
+            date_str = contract_symbol[type_pos-6:type_pos]
+            strike_str = contract_symbol[type_pos+1:]
+            
+            # Parse date YYMMDD
+            year = 2000 + int(date_str[:2])
+            month = int(date_str[2:4])
+            day = int(date_str[4:6])
+            expiration = f"{year}-{month:02d}-{day:02d}"
+            
+            # Parse strike (divide by 1000)
+            strike = float(strike_str) / 1000.0
+            
+            return {
+                'underlying': underlying,
+                'expiration': expiration,
+                'type': option_type,
+                'strike': strike
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error parsing contract symbol {contract_symbol}: {e}")
+            return None
+    
+    # REMOVED: _create_limited_fallback_chain() - NO FAKE OPTIONS DATA ALLOWED
+    # This method generated fake options chains which is dangerous for trading.
+    # The system now fails properly when real options data is unavailable.
     
     def _get_next_friday(self, weeks: int = 1) -> datetime:
         """Get the next Friday N weeks from now"""
