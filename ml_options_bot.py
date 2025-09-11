@@ -12,6 +12,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import alpaca_trade_api as tradeapi
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -24,12 +28,12 @@ logger = logging.getLogger(__name__)
 class MLOptionsBot:
     def __init__(self):
         # Alpaca API setup
-        self.api_key = os.environ.get('ALPACA_API_KEY')
-        self.secret_key = os.environ.get('ALPACA_SECRET_KEY') 
-        self.base_url = os.environ.get('ALPACA_BASE_URL', 'https://paper-api.alpaca.markets')
+        self.api_key = os.environ.get('APCA_API_KEY_ID')
+        self.secret_key = os.environ.get('APCA_API_SECRET_KEY') 
+        self.base_url = os.environ.get('APCA_API_BASE_URL', 'https://paper-api.alpaca.markets')
         
         if not self.api_key or not self.secret_key:
-            raise ValueError("Missing ALPACA_API_KEY or ALPACA_SECRET_KEY")
+            raise ValueError("Missing APCA_API_KEY_ID or APCA_API_SECRET_KEY")
         
         self.api = tradeapi.REST(self.api_key, self.secret_key, self.base_url, api_version='v2')
         
