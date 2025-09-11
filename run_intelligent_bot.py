@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 import signal
 import traceback
-from intelligent_options_bot import IntelligentOptionsBot
+from aggressive_trading_bot import AggressiveTradingBot
 
 class BotRunner:
     """Bot runner with proper lifecycle management"""
@@ -52,9 +52,9 @@ class BotRunner:
     def _validate_environment(self) -> bool:
         """Validate required environment variables"""
         required_vars = [
-            'APCA_API_KEY_ID',
-            'APCA_API_SECRET_KEY',
-            'APCA_API_BASE_URL'
+            'ALPACA_API_KEY',
+            'ALPACA_SECRET_KEY',
+            'ALPACA_BASE_URL'
         ]
         
         missing_vars = []
@@ -83,8 +83,7 @@ class BotRunner:
         try:
             self.logger.info("🤖 Initializing Intelligent Options Bot...")
             
-            self.bot = IntelligentOptionsBot()
-            await self.bot.initialize()
+            self.bot = AggressiveTradingBot()
             
             self.logger.info("✅ Bot initialization complete")
             return True
@@ -103,7 +102,7 @@ class BotRunner:
             while self.running:
                 try:
                     # Run one trading cycle
-                    await self.bot._trading_cycle()
+                    await self.bot.trading_cycle()
                     
                     # Wait before next cycle (60 seconds)
                     for _ in range(60):
@@ -134,11 +133,7 @@ class BotRunner:
         if self.bot:
             try:
                 self.logger.info("📊 Generating final performance report...")
-                performance = self.bot.knowledge_db.get_trading_performance()
-                self.logger.info(f"📈 Final Performance: {performance}")
-                
-                # Clean up resources
-                self.bot.knowledge_db.cleanup_old_records()
+                await self.bot.show_portfolio_status()
                 
                 self.logger.info("✅ Bot shutdown complete")
                 
