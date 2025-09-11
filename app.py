@@ -4,7 +4,7 @@ ML-BASED PREDICTIVE OPTIONS TRADING BOT
 Uses machine learning to predict price movements and trade options
 """
 
-from ml_options_bot import MLOptionsBot
+from src.ml_options_bot import MLOptionsBot
 import asyncio
 
 if __name__ == "__main__":
