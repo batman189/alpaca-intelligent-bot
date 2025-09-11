@@ -1,18 +1,25 @@
-# Intelligent Trading Bot
+# Simple Options Trading Bot
 
-A sophisticated algorithmic trading system that uses machine learning to make trading decisions.
+## What it does:
+- Watches **UNH** and **TSLA** for big moves
+- **UNH up $5+ or 2%+** → BUY CALLS
+- **TSLA up $10+ or 3%+** → BUY CALLS
 
-## Setup
+## Environment Variables:
+```
+ALPACA_API_KEY=your_key_here
+ALPACA_SECRET_KEY=your_secret_here
+ALPACA_BASE_URL=https://paper-api.alpaca.markets
+```
 
-1. Clone the repository
-2. Install dependencies: `pip install -r requirements.txt`
-3. Copy `.env.example` to `.env` and configure your settings
-4. Add your Alpaca API keys to `.env`
-5. Run: `python app.py`
+## Run locally:
+```bash
+python app.py
+```
 
-## Features
+## Deploy to Render:
+1. Set environment variables in Render
+2. Start command: `python app.py`
+3. Build command: `pip install -r requirements.txt`
 
-- Real-time market data analysis
-- Machine learning-based predictions
-- Comprehensive risk management
-- Options trading capabilities
+That's it. No bloat, no complex ML, just simple options trading on big moves.
