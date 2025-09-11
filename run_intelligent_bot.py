@@ -14,7 +14,7 @@ import logging
 from datetime import datetime
 import signal
 import traceback
-from aggressive_trading_bot import AggressiveTradingBot
+from working_options_bot import WorkingOptionsBot
 
 class BotRunner:
     """Bot runner with proper lifecycle management"""
@@ -83,7 +83,7 @@ class BotRunner:
         try:
             self.logger.info("🤖 Initializing Intelligent Options Bot...")
             
-            self.bot = AggressiveTradingBot()
+            self.bot = WorkingOptionsBot()
             
             self.logger.info("✅ Bot initialization complete")
             return True
@@ -133,7 +133,7 @@ class BotRunner:
         if self.bot:
             try:
                 self.logger.info("📊 Generating final performance report...")
-                await self.bot.show_portfolio_status()
+                await self.bot.show_portfolio()
                 
                 self.logger.info("✅ Bot shutdown complete")
                 
