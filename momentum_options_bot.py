@@ -174,8 +174,8 @@ class MomentumOptionsBot:
             bars = self.api.get_bars(
                 symbol,
                 TimeFrame.Minute,
-                start=start_date.isoformat(),
-                end=end_date.isoformat(),
+                start=start_date.strftime('%Y-%m-%d'),
+                end=end_date.strftime('%Y-%m-%d'),
                 limit=1000
             ).df
             
