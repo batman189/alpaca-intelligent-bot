@@ -13,14 +13,14 @@ import numpy as np
 from datetime import datetime, timedelta
 import alpaca_trade_api as tradeapi
 from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import warnings
 warnings.filterwarnings('ignore')
+
+# Load environment variables from .env file
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
