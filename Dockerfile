@@ -30,4 +30,4 @@ HEALTHCHECK --interval=5m --timeout=30s --start-period=5s --retries=3 \
     CMD python -c "import os; exit(0 if os.path.exists('logs/trading_bot.log') else 1)"
 
 # Run the application
-CMD ["python", "ml_options_bot.py"]
+CMD ["python", "momentum_options_bot.py"]

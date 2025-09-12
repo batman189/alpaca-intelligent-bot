@@ -3,7 +3,7 @@ version: '3.8'
 services:
   options-trading-bot:
     build: .
-    container_name: ml-options-bot
+    container_name: momentum-options-bot
     restart: unless-stopped
     environment:
       - ENVIRONMENT=production
