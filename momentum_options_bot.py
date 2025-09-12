@@ -264,18 +264,109 @@ class MomentumOptionsBot:
             equity = float(account.equity)
             risk_amount = equity * self.risk_per_trade
             
-            # For now, simulate options order (since options trading requires special setup)
-            # In production, this would be actual options orders
             print(f"   [RISK] Risk Amount: ${risk_amount:.0f}")
-            print(f"   [ORDER] Would execute: {direction} options on {symbol}")
             
-            # Log the trade decision
-            print(f"   [SUCCESS] {symbol} momentum trade logged")
+            # Generate options symbol and execute real trade
+            options_symbol = self.generate_options_symbol(symbol, direction, current_price)
+            if options_symbol:
+                success = self.place_options_order(options_symbol, direction, risk_amount, current_price)
+                if success:
+                    print(f"   [SUCCESS] {symbol} options order placed: {options_symbol}")
+                    return True
+                else:
+                    print(f"   [ERROR] Failed to place {symbol} options order")
+                    return False
+            else:
+                print(f"   [ERROR] Could not generate options symbol for {symbol}")
+                return False
+            
+        except Exception as e:
+            print(f"[ERROR] Error executing options trade: {e}")
+            return False
+
+    def generate_options_symbol(self, symbol: str, direction: str, current_price: float) -> Optional[str]:
+        """Generate proper options symbol for Alpaca trading"""
+        try:
+            import datetime
+            
+            # Calculate expiration date (2 weeks from now, next Friday)
+            today = datetime.date.today()
+            days_until_friday = (4 - today.weekday()) % 7  # Friday is 4
+            if days_until_friday == 0:  # If today is Friday, get next Friday
+                days_until_friday = 7
+            
+            # Add 2 weeks to get the Friday after next
+            expiration_date = today + datetime.timedelta(days=days_until_friday + 7)
+            exp_str = expiration_date.strftime("%y%m%d")  # YYMMDD format
+            
+            # Calculate strike price based on direction and momentum
+            if direction == 'bullish':
+                # Slightly OTM calls - 2% above current price
+                strike_price = round(current_price * 1.02, 0)
+                option_type = 'C'
+            else:
+                # Slightly OTM puts - 2% below current price  
+                strike_price = round(current_price * 0.98, 0)
+                option_type = 'P'
+            
+            # Format strike price (multiply by 1000 for options format)
+            strike_formatted = f"{int(strike_price * 1000):08d}"
+            
+            # Alpaca options format: SYMBOL + YYMMDD + C/P + 8-digit strike
+            options_symbol = f"{symbol}{exp_str}{option_type}{strike_formatted}"
+            
+            print(f"   [OPTIONS] Generated symbol: {options_symbol}")
+            print(f"   [STRIKE] Strike: ${strike_price:.0f} ({option_type})")
+            print(f"   [EXPIRY] Expiration: {expiration_date}")
+            
+            return options_symbol
+            
+        except Exception as e:
+            print(f"[ERROR] Error generating options symbol: {e}")
+            return None
+
+    def place_options_order(self, options_symbol: str, direction: str, risk_amount: float, current_price: float) -> bool:
+        """Place actual options order through Alpaca API"""
+        try:
+            # Estimate options premium (rough estimate: 3-5% of stock price)
+            estimated_premium = current_price * 0.04  # 4% estimate
+            
+            # Calculate number of contracts based on risk amount
+            # Each options contract represents 100 shares
+            contract_cost = estimated_premium * 100
+            contracts = max(1, int(risk_amount / contract_cost))
+            
+            # Limit to reasonable number of contracts
+            contracts = min(contracts, 10)
+            
+            print(f"   [ESTIMATE] Premium: ${estimated_premium:.2f}")
+            print(f"   [CONTRACTS] Quantity: {contracts}")
+            print(f"   [COST] Estimated cost: ${contract_cost * contracts:.0f}")
+            
+            # Submit the options order
+            order = self.api.submit_order(
+                symbol=options_symbol,
+                qty=contracts,
+                side='buy',  # Always buying options (calls or puts)
+                type='market',
+                time_in_force='day'
+            )
+            
+            print(f"   [ORDER] Order ID: {order.id}")
+            print(f"   [STATUS] Order submitted successfully")
             
             return True
             
         except Exception as e:
-            print(f"[ERROR] Error executing options trade: {e}")
+            print(f"[ERROR] Failed to place options order: {e}")
+            
+            # If options trading fails, could be due to:
+            # 1. Options not approved on account
+            # 2. Invalid options symbol
+            # 3. Market closed or options not available
+            print(f"   [INFO] Options trading may not be enabled on account")
+            print(f"   [INFO] Check Alpaca dashboard for options approval status")
+            
             return False
 
     def close_all_positions(self):
