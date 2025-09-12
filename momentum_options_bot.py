@@ -45,11 +45,17 @@ class MomentumOptionsBot:
         self.current_positions = {}
         self.last_analysis = {}
         
-        # Trading parameters
-        self.max_positions = 5
-        self.risk_per_trade = 0.02  # 2% per trade
-        self.min_volume_surge = 2.0  # 2x average volume
-        self.min_price_move = 0.02   # 2% price move threshold
+        # Trading parameters - CONSERVATIVE SETTINGS
+        self.max_positions = 3  # Reduced from 5
+        self.risk_per_trade = 0.01  # Reduced to 1% from 2%
+        self.max_daily_trades = 2  # Prevent day trading violations
+        self.min_volume_surge = 3.0  # Increased from 2x to 3x
+        self.min_price_move = 0.03   # Increased from 2% to 3%
+        self.min_momentum_score = 50  # Higher quality threshold
+        
+        # Day trading protection
+        self.daily_trade_count = 0
+        self.last_trade_date = None
         
         print(f"Momentum Options Bot initialized")
         print(f"Tracking {len(self.stock_universe)} stocks")
@@ -225,8 +231,8 @@ class MomentumOptionsBot:
             if volatility_ratio > 1.5:
                 momentum_score += 10
             
-            # Only return if we have a meaningful score
-            if momentum_score >= 30:  # Minimum threshold
+            # Only return if we have a HIGH QUALITY score
+            if momentum_score >= self.min_momentum_score:  # Much higher threshold
                 return {
                     'symbol': symbol,
                     'score': momentum_score,
@@ -247,6 +253,11 @@ class MomentumOptionsBot:
     def execute_momentum_options_trade(self, momentum_data: Dict):
         """Execute options trade based on momentum signal"""
         try:
+            # DAY TRADING PROTECTION
+            if not self.can_make_trade():
+                print(f"   [BLOCKED] Day trading limit reached ({self.daily_trade_count}/{self.max_daily_trades})")
+                return False
+            
             symbol = momentum_data['symbol']
             direction = momentum_data['direction']
             current_price = momentum_data['current_price']
@@ -283,6 +294,36 @@ class MomentumOptionsBot:
         except Exception as e:
             print(f"[ERROR] Error executing options trade: {e}")
             return False
+
+    def can_make_trade(self) -> bool:
+        """Check if we can make a trade without PDT violations"""
+        import datetime
+        today = datetime.date.today()
+        
+        # Reset daily counter if new day
+        if self.last_trade_date != today:
+            self.daily_trade_count = 0
+            self.last_trade_date = today
+        
+        # Check if we've hit our daily limit
+        if self.daily_trade_count >= self.max_daily_trades:
+            return False
+        
+        # Check existing positions to avoid over-concentration
+        try:
+            positions = self.api.list_positions()
+            if len(positions) >= self.max_positions:
+                print(f"   [BLOCKED] Max positions reached ({len(positions)}/{self.max_positions})")
+                return False
+        except:
+            pass  # Continue if can't check positions
+        
+        return True
+
+    def record_trade(self):
+        """Record that a trade was made"""
+        self.daily_trade_count += 1
+        print(f"   [TRACKING] Daily trades: {self.daily_trade_count}/{self.max_daily_trades}")
 
     def generate_options_symbol(self, symbol: str, direction: str, current_price: float) -> Optional[str]:
         """Generate proper options symbol for Alpaca trading"""
@@ -328,16 +369,22 @@ class MomentumOptionsBot:
     def place_options_order(self, options_symbol: str, direction: str, risk_amount: float, current_price: float) -> bool:
         """Place actual options order through Alpaca API"""
         try:
-            # Estimate options premium (rough estimate: 3-5% of stock price)
-            estimated_premium = current_price * 0.04  # 4% estimate
+            # CONSERVATIVE premium estimate - options can be expensive!
+            estimated_premium = current_price * 0.15  # 15% estimate (more realistic)
             
             # Calculate number of contracts based on risk amount
             # Each options contract represents 100 shares
             contract_cost = estimated_premium * 100
             contracts = max(1, int(risk_amount / contract_cost))
             
-            # Limit to reasonable number of contracts
-            contracts = min(contracts, 10)
+            # STRICT limits to prevent large losses
+            contracts = min(contracts, 3)  # Max 3 contracts
+            
+            # Double-check total cost doesn't exceed risk limit
+            total_estimated_cost = contract_cost * contracts
+            if total_estimated_cost > risk_amount * 1.5:  # 50% buffer
+                contracts = max(1, int(risk_amount / contract_cost))
+                print(f"   [WARNING] Reduced contracts due to cost: {contracts}")
             
             print(f"   [ESTIMATE] Premium: ${estimated_premium:.2f}")
             print(f"   [CONTRACTS] Quantity: {contracts}")
@@ -354,6 +401,9 @@ class MomentumOptionsBot:
             
             print(f"   [ORDER] Order ID: {order.id}")
             print(f"   [STATUS] Order submitted successfully")
+            
+            # Record the trade for day trading protection
+            self.record_trade()
             
             return True
             
