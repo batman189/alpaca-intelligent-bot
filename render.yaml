@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: ml-options-trading-bot
+    env: python
+    plan: standard  # or professional for better performance
+    buildCommand: pip install -r requirements.txt
+    startCommand: python ml_options_bot.py
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PAPER_TRADING
+        value: true
+      - key: WATCHLIST
+        value: SPY,QQQ,AAPL,MSFT,TSLA,NVDA,UNH
+      - key: MAX_POSITIONS
+        value: 5
+      - key: RISK_PER_TRADE
+        value: 0.02
+      - key: MIN_CONFIDENCE
+        value: 0.65
+      - key: OPTIONS_EXPIRY_DAYS
+        value: 14
+    # Health check endpoint (if you want to add one later)
+    healthCheckPath: /health
+    
+  # Optional: Add a Redis service for caching
+  - type: redis
+    name: trading-cache
+    plan: starter
+    maxmemoryPolicy: allkeys-lru
