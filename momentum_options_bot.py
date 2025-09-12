@@ -52,9 +52,11 @@ class MomentumOptionsBot:
         self.min_price_move = 0.03   # Increased from 2% to 3%
         self.min_momentum_score = 50  # Higher quality threshold
         
-        # Day trading violation prevention
-        self.todays_opened_positions = set()  # Track symbols opened today
+        # Day trading violation prevention and trailing stops
+        self.todays_opened_contracts = set()  # Track specific options contracts opened today
+        self.position_entry_prices = {}  # Track entry prices for trailing stops
         self.last_trade_date = None
+        self.max_loss_percent = 0.20  # 20% max loss before stop
         
         print(f"Momentum Options Bot initialized")
         print(f"Tracking {len(self.stock_universe)} stocks")
@@ -94,6 +96,9 @@ class MomentumOptionsBot:
                     self.close_all_positions()
                     time.sleep(60 * 15)  # Wait for market close
                     continue
+                
+                # Check trailing stops first (protect existing positions)
+                self.check_trailing_stops()
                 
                 # Run momentum analysis and trading
                 self.run_momentum_analysis()
@@ -294,21 +299,93 @@ class MomentumOptionsBot:
             print(f"[ERROR] Error executing options trade: {e}")
             return False
 
+    def check_trailing_stops(self):
+        """Check all positions for trailing stop triggers"""
+        try:
+            positions = self.api.list_positions()
+            
+            for position in positions:
+                options_symbol = position.symbol
+                current_price = float(position.market_value) / abs(float(position.qty)) / 100  # Per contract
+                
+                # Check if we have tracking info for this position
+                if options_symbol in self.position_entry_prices:
+                    entry_data = self.position_entry_prices[options_symbol]
+                    entry_price = entry_data['entry_price']
+                    high_water_mark = entry_data['high_water_mark']
+                    
+                    # Update high water mark if position is profitable
+                    if current_price > high_water_mark:
+                        entry_data['high_water_mark'] = current_price
+                        high_water_mark = current_price
+                        print(f"   [TRAIL] {options_symbol} new high: ${current_price:.2f}")
+                    
+                    # Calculate loss from entry and from high water mark
+                    loss_from_entry = (entry_price - current_price) / entry_price
+                    loss_from_high = (high_water_mark - current_price) / high_water_mark
+                    
+                    # Check for max loss trigger (20% from entry)
+                    if loss_from_entry >= self.max_loss_percent:
+                        print(f"   [STOP] {options_symbol} hit max loss: {loss_from_entry:.1%}")
+                        self.close_position_if_not_day_trade(options_symbol, "Max loss stop")
+                        continue
+                    
+                    # Check for trailing stop trigger (10% from high water mark)
+                    trailing_stop_percent = 0.10  # 10% trailing stop
+                    if loss_from_high >= trailing_stop_percent and high_water_mark > entry_price * 1.05:  # Only if profitable
+                        print(f"   [TRAIL] {options_symbol} trailing stop: {loss_from_high:.1%} from high")
+                        self.close_position_if_not_day_trade(options_symbol, "Trailing stop")
+                        
+        except Exception as e:
+            print(f"[ERROR] Error checking trailing stops: {e}")
+
+    def close_position_if_not_day_trade(self, options_symbol: str, reason: str):
+        """Close position only if it won't create a day trade"""
+        import datetime
+        today = datetime.date.today()
+        
+        # Check if this contract was opened today - would be day trade
+        if options_symbol in self.todays_opened_contracts:
+            print(f"   [BLOCKED] Cannot close {options_symbol} - would be day trade")
+            print(f"   [INFO] Will close tomorrow. Reason: {reason}")
+            return False
+        
+        try:
+            # Close the position
+            position = self.api.get_position(options_symbol)
+            qty = abs(int(float(position.qty)))
+            
+            order = self.api.submit_order(
+                symbol=options_symbol,
+                qty=qty,
+                side='sell',  # Always selling to close options positions
+                type='market',
+                time_in_force='day'
+            )
+            
+            print(f"   [CLOSE] Closed {options_symbol}: {qty} contracts ({reason})")
+            print(f"   [ORDER] Close order ID: {order.id}")
+            
+            # Remove from tracking
+            if options_symbol in self.position_entry_prices:
+                del self.position_entry_prices[options_symbol]
+            
+            return True
+            
+        except Exception as e:
+            print(f"[ERROR] Failed to close position {options_symbol}: {e}")
+            return False
+
     def can_make_trade(self, symbol: str) -> bool:
-        """Check if we can make a trade without PDT violations"""
+        """Check if we can make a trade without exceeding position limits"""
         import datetime
         today = datetime.date.today()
         
         # Reset daily tracking if new day
         if self.last_trade_date != today:
-            self.todays_opened_positions.clear()
+            self.todays_opened_contracts.clear()
+            # Don't clear position_entry_prices - need for trailing stops across days
             self.last_trade_date = today
-        
-        # Check if we already have a position in this symbol that we opened today
-        # This would create a day trade if we close it today
-        if symbol in self.todays_opened_positions:
-            print(f"   [BLOCKED] Already opened {symbol} position today - would be day trade")
-            return False
         
         # Check existing positions to avoid over-concentration
         try:
@@ -316,22 +393,24 @@ class MomentumOptionsBot:
             if len(positions) >= self.max_positions:
                 print(f"   [BLOCKED] Max positions reached ({len(positions)}/{self.max_positions})")
                 return False
-            
-            # Check if we already have a position in this symbol
-            for pos in positions:
-                if pos.symbol == symbol:
-                    print(f"   [BLOCKED] Already have position in {symbol}")
-                    return False
                     
         except:
             pass  # Continue if can't check positions
         
         return True
 
-    def record_trade(self, symbol: str):
-        """Record that we opened a position in this symbol today"""
-        self.todays_opened_positions.add(symbol)
-        print(f"   [TRACKING] Opened position in {symbol} - avoiding day trade")
+    def record_trade(self, options_symbol: str, entry_price: float):
+        """Record that we opened this specific contract today"""
+        import datetime
+        today = datetime.date.today()
+        
+        self.todays_opened_contracts.add(options_symbol)
+        self.position_entry_prices[options_symbol] = {
+            'entry_price': entry_price,
+            'date_opened': today,
+            'high_water_mark': entry_price  # For trailing stops
+        }
+        print(f"   [TRACKING] Opened contract {options_symbol} at ${entry_price:.2f}")
 
     def generate_options_symbol(self, symbol: str, direction: str, current_price: float) -> Optional[str]:
         """Generate proper options symbol for Alpaca trading"""
@@ -410,8 +489,10 @@ class MomentumOptionsBot:
             print(f"   [ORDER] Order ID: {order.id}")
             print(f"   [STATUS] Order submitted successfully")
             
-            # Record the trade for day trading protection
-            self.record_trade(underlying_symbol)
+            # Record the trade for day trading protection and trailing stops
+            # Get the actual fill price from the order (use estimated for now)
+            entry_price = estimated_premium
+            self.record_trade(options_symbol, entry_price)
             
             return True
             
