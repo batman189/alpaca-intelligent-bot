@@ -48,13 +48,12 @@ class MomentumOptionsBot:
         # Trading parameters - CONSERVATIVE SETTINGS
         self.max_positions = 3  # Reduced from 5
         self.risk_per_trade = 0.01  # Reduced to 1% from 2%
-        self.max_daily_trades = 2  # Prevent day trading violations
         self.min_volume_surge = 3.0  # Increased from 2x to 3x
         self.min_price_move = 0.03   # Increased from 2% to 3%
         self.min_momentum_score = 50  # Higher quality threshold
         
-        # Day trading protection
-        self.daily_trade_count = 0
+        # Day trading violation prevention
+        self.todays_opened_positions = set()  # Track symbols opened today
         self.last_trade_date = None
         
         print(f"Momentum Options Bot initialized")
@@ -253,9 +252,9 @@ class MomentumOptionsBot:
     def execute_momentum_options_trade(self, momentum_data: Dict):
         """Execute options trade based on momentum signal"""
         try:
-            # DAY TRADING PROTECTION
-            if not self.can_make_trade():
-                print(f"   [BLOCKED] Day trading limit reached ({self.daily_trade_count}/{self.max_daily_trades})")
+            # DAY TRADING VIOLATION PREVENTION
+            if not self.can_make_trade(symbol):
+                print(f"   [BLOCKED] Would create day trading violation for {symbol}")
                 return False
             
             symbol = momentum_data['symbol']
@@ -280,7 +279,7 @@ class MomentumOptionsBot:
             # Generate options symbol and execute real trade
             options_symbol = self.generate_options_symbol(symbol, direction, current_price)
             if options_symbol:
-                success = self.place_options_order(options_symbol, direction, risk_amount, current_price)
+                success = self.place_options_order(options_symbol, direction, risk_amount, current_price, symbol)
                 if success:
                     print(f"   [SUCCESS] {symbol} options order placed: {options_symbol}")
                     return True
@@ -295,18 +294,20 @@ class MomentumOptionsBot:
             print(f"[ERROR] Error executing options trade: {e}")
             return False
 
-    def can_make_trade(self) -> bool:
+    def can_make_trade(self, symbol: str) -> bool:
         """Check if we can make a trade without PDT violations"""
         import datetime
         today = datetime.date.today()
         
-        # Reset daily counter if new day
+        # Reset daily tracking if new day
         if self.last_trade_date != today:
-            self.daily_trade_count = 0
+            self.todays_opened_positions.clear()
             self.last_trade_date = today
         
-        # Check if we've hit our daily limit
-        if self.daily_trade_count >= self.max_daily_trades:
+        # Check if we already have a position in this symbol that we opened today
+        # This would create a day trade if we close it today
+        if symbol in self.todays_opened_positions:
+            print(f"   [BLOCKED] Already opened {symbol} position today - would be day trade")
             return False
         
         # Check existing positions to avoid over-concentration
@@ -315,15 +316,22 @@ class MomentumOptionsBot:
             if len(positions) >= self.max_positions:
                 print(f"   [BLOCKED] Max positions reached ({len(positions)}/{self.max_positions})")
                 return False
+            
+            # Check if we already have a position in this symbol
+            for pos in positions:
+                if pos.symbol == symbol:
+                    print(f"   [BLOCKED] Already have position in {symbol}")
+                    return False
+                    
         except:
             pass  # Continue if can't check positions
         
         return True
 
-    def record_trade(self):
-        """Record that a trade was made"""
-        self.daily_trade_count += 1
-        print(f"   [TRACKING] Daily trades: {self.daily_trade_count}/{self.max_daily_trades}")
+    def record_trade(self, symbol: str):
+        """Record that we opened a position in this symbol today"""
+        self.todays_opened_positions.add(symbol)
+        print(f"   [TRACKING] Opened position in {symbol} - avoiding day trade")
 
     def generate_options_symbol(self, symbol: str, direction: str, current_price: float) -> Optional[str]:
         """Generate proper options symbol for Alpaca trading"""
@@ -366,7 +374,7 @@ class MomentumOptionsBot:
             print(f"[ERROR] Error generating options symbol: {e}")
             return None
 
-    def place_options_order(self, options_symbol: str, direction: str, risk_amount: float, current_price: float) -> bool:
+    def place_options_order(self, options_symbol: str, direction: str, risk_amount: float, current_price: float, underlying_symbol: str) -> bool:
         """Place actual options order through Alpaca API"""
         try:
             # CONSERVATIVE premium estimate - options can be expensive!
@@ -403,7 +411,7 @@ class MomentumOptionsBot:
             print(f"   [STATUS] Order submitted successfully")
             
             # Record the trade for day trading protection
-            self.record_trade()
+            self.record_trade(underlying_symbol)
             
             return True
             
